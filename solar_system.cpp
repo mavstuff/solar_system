@@ -1,4 +1,5 @@
 //g++ -o solar_system solar_system.cpp -lGL -lGLU -lglut -lGLEW -lm
+//#define GLEW_STATIC 
 #include <GL/glew.h>       // Include GLEW for OpenGL function loading
 #include <GL/glut.h>       // Include GLUT for window management
 #include <glm/glm.hpp>     // Include GLM for matrix and vector operations
@@ -10,6 +11,10 @@
 #include <cstdlib>         // Include cstdlib for exit
 #include <vector>          // Include vector for dynamic arrays
 #include <string>          // Include string for moon names
+
+#ifndef M_PI
+#define M_PI	3.141592653589793
+#endif
 
 // Global variables for rotation angles
 std::vector<float> planetRotations = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // Rotations for each planet
