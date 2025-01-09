@@ -1,6 +1,6 @@
-prefix=C:/Program Files (x86)/solar_system
+prefix=D:/VSProjects/solar_system/out/install/x64-Debug
 exec_prefix=${prefix}
-libdir=C:/Program Files (x86)/solar_system/lib
+libdir=D:/VSProjects/solar_system/out/install/x64-Debug/lib
 includedir=${prefix}/include
 
 Name: glew

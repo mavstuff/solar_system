@@ -1,3 +1,6 @@
+/*
+Copyright (c) 2025 Artem Moroz
+*/
 
 #include <cmath>           // Include cmath for math functions
 #include <cstring>         // Include cstring for string functions
