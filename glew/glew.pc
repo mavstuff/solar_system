@@ -1,6 +1,6 @@
-prefix=C:/Program Files (x86)/SolarSystem
+prefix=C:/Program Files (x86)/solar_system
 exec_prefix=${prefix}
-libdir=C:/Program Files (x86)/SolarSystem/lib
+libdir=C:/Program Files (x86)/solar_system/lib
 includedir=${prefix}/include
 
 Name: glew

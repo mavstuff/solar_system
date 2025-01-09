@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.17)
-project(SolarSystem)
+project(solar_system)
 
 set(CMAKE_CXX_STANDARD 11)
 
@@ -11,11 +11,10 @@ add_subdirectory(freeglut EXCLUDE_FROM_ALL)
 
 
 # Find required libraries
-find_package(OpenGL REQUIRED)
+#find_package(OpenGL REQUIRED)
 
 # Set include directories
 include_directories(
-    ${OpenGL_INCLUDE_DIRS}
     "glm/"
 	"glew/include/"
     "freeglut/include/"
@@ -28,8 +27,8 @@ link_directories("glew")
 set(SOURCE_FILES solar_system.cpp)
 
 # Add executable target
-add_executable(SolarSystem ${SOURCE_FILES})
+add_executable(solar_system ${SOURCE_FILES})
 
 
 # Link libraries
-target_link_libraries(SolarSystem ${OpenGL_LIBRARIES} freeglut_static glew_s ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(solar_system freeglut_static glew_s ${CMAKE_THREAD_LIBS_INIT})

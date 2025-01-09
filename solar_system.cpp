@@ -1,10 +1,4 @@
-//g++ -o solar_system solar_system.cpp -lGL -lGLU -lglut -lGLEW -lm
-//#define GLEW_STATIC 
-#include <GL/glew.h>       // Include GLEW for OpenGL function loading
-#include <GL/glut.h>       // Include GLUT for window management
-#include <glm/glm.hpp>     // Include GLM for matrix and vector operations
-#include <glm/gtc/matrix_transform.hpp> // Include GLM transformations
-#include <glm/gtc/type_ptr.hpp> // Include GLM type pointers
+
 #include <cmath>           // Include cmath for math functions
 #include <cstring>         // Include cstring for string functions
 #include <cstdio>          // Include cstdio for printf
@@ -12,8 +6,15 @@
 #include <vector>          // Include vector for dynamic arrays
 #include <string>          // Include string for moon names
 
+#include <GL/glew.h>       // Include GLEW for OpenGL function loading
+#include <GL/freeglut.h>       // Include GLUT for window management
+#include <glm/glm.hpp>     // Include GLM for matrix and vector operations
+#include <glm/gtc/matrix_transform.hpp> // Include GLM transformations
+#include <glm/gtc/type_ptr.hpp> // Include GLM type pointers
+
+
 #ifndef M_PI
-#define M_PI	3.141592653589793
+#    define  M_PI  3.14159265358979323846
 #endif
 
 // Global variables for rotation angles
@@ -120,10 +121,10 @@ GLuint createShaderProgram(const char* vertexSource, const char* fragmentSource)
 }
 
 // Function to render text at a specific position
-void renderText(const char* text, float x, float y, float z) {
+void renderText(const char* text, int big, float x, float y, float z) {
     glRasterPos3f(x, y, z); // Set the position for the text
     for (const char* c = text; *c != '\0'; c++) {
-        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c); // Render each character
+        glutBitmapCharacter(big ? GLUT_BITMAP_HELVETICA_18 : GLUT_BITMAP_HELVETICA_12, *c); // Render each character
     }
 }
 
@@ -140,12 +141,12 @@ void drawCircle(float radius, int segments) {
 // Function to initialize OpenGL settings and shaders
 void init() {
     // Initialize GLEW
-    glewExperimental = GL_TRUE;
+    glewExperimental = GL_FALSE;
     if (glewInit() != GLEW_OK) {
         printf("Failed to initialize GLEW\n");
         exit(1);
     }
-
+    
     glClearColor(0.0, 0.0, 0.0, 1.0); // Set background color to black
     glEnable(GL_DEPTH_TEST);          // Enable depth testing for 3D rendering
 
@@ -233,15 +234,15 @@ void init() {
 
     glBindVertexArray(asteroidVAO);
 
-    // Upload vertex data
+    //// Upload vertex data
     glBindBuffer(GL_ARRAY_BUFFER, asteroidVBO);
     glBufferData(GL_ARRAY_BUFFER, asteroidPositions.size() * sizeof(glm::vec3), asteroidPositions.data(), GL_STATIC_DRAW);
 
-    // Set up vertex attribute pointers
+    //// Set up vertex attribute pointers
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
     glEnableVertexAttribArray(0);
 
-    // Generate indices for asteroids (each asteroid is a point)
+    //// Generate indices for asteroids (each asteroid is a point)
     std::vector<GLuint> indices(numAsteroids);
     for (int i = 0; i < numAsteroids; i++) {
         indices[i] = i;
@@ -250,8 +251,11 @@ void init() {
     // Upload index data
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, asteroidIBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(GLuint), indices.data(), GL_STATIC_DRAW);
-
+        
     glBindVertexArray(0); // Unbind VAO
+    glBindBuffer(GL_ARRAY_BUFFER, 0); // Unbind buffers
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    
 }
 
 // Function to draw the Sun with a burning effect
@@ -265,17 +269,14 @@ void drawSun() {
 
     // Calculate MVP matrix for the Sun using GLM
     glm::mat4 model = glm::mat4(1.0f); // Identity matrix
-    glm::mat4 view = glm::lookAt(
-        glm::vec3(0.0f, 30.0f, 50.0f), // Camera position
-        glm::vec3(0.0f, 0.0f, 0.0f),  // Look at point
-        glm::vec3(0.0f, 1.0f, 0.0f)   // Up vector
-    );
-    glm::mat4 projection = glm::perspective(
-        glm::radians(30.0f), // Field of view
-        800.0f / 600.0f,     // Aspect ratio
-        1.0f,                // Near clipping plane
-        200.0f               // Far clipping plane
-    );
+    // Get the View matrix
+    glm::mat4 view;
+    glGetFloatv(GL_MODELVIEW_MATRIX, &view[0][0]);
+
+    // Get the Projection matrix
+    glm::mat4 projection;
+    glGetFloatv(GL_PROJECTION_MATRIX, &projection[0][0]);
+
     glm::mat4 MVP = projection * view * model;
 
     // Pass MVP matrix to the shader
@@ -293,17 +294,16 @@ void drawSaturnRings(float radius) {
 
     // Calculate MVP matrix for Saturn's rings using GLM
     glm::mat4 model = glm::mat4(1.0f); // Identity matrix
-    glm::mat4 view = glm::lookAt(
-        glm::vec3(0.0f, 30.0f, 50.0f), // Camera position
-        glm::vec3(0.0f, 0.0f, 0.0f),  // Look at point
-        glm::vec3(0.0f, 1.0f, 0.0f)   // Up vector
-    );
-    glm::mat4 projection = glm::perspective(
-        glm::radians(30.0f), // Field of view
-        800.0f / 600.0f,     // Aspect ratio
-        1.0f,                // Near clipping plane
-        200.0f               // Far clipping plane
-    );
+
+    // Get the View matrix
+    glm::mat4 view;
+    glGetFloatv(GL_MODELVIEW_MATRIX, &view[0][0]);
+
+    // Get the Projection matrix
+    glm::mat4 projection;
+    glGetFloatv(GL_PROJECTION_MATRIX, &projection[0][0]);
+
+    // Calculate the Model-View-Projection matrix
     glm::mat4 MVP = projection * view * model;
 
     // Pass MVP matrix to the shader
@@ -330,7 +330,7 @@ void drawMoon(float distance, float size, float orbitAngle, float speed, const s
 
     // Render the moon's name
     glColor3f(1.0, 1.0, 1.0); // White color for text
-    renderText(name.c_str(), 0.0, size + 0.05, 0.0); // Display name above the moon
+    renderText(name.c_str(), 0, 0.0, size + 0.05, 0.0); // Display name above the moon
 
     glPopMatrix();
 }
@@ -342,7 +342,7 @@ void drawPlanet(float radius, float distance, const std::vector<float>& color, f
     glTranslatef(distance, 0.0, 0.0);     // Move to the planet's orbit
     glRotatef(rotationAngle, 0.0, 1.0, 0.0); // Rotate the planet on its axis
     glColor3fv(color.data()); // Set planet color
-    glutSolidSphere(radius, 50, 50); // Draw the planet
+    glutSolidSphere(radius, 20, 20); // Draw the planet
 
     // Draw Saturn's rings if it's Saturn
     if (name == "Saturn") {
@@ -356,7 +356,7 @@ void drawPlanet(float radius, float distance, const std::vector<float>& color, f
 
     // Render the planet's name
     glColor3f(1.0, 1.0, 1.0); // White color for text
-    renderText(name.c_str(), 0.0, radius + 0.2, 0.0); // Display name above the planet
+    renderText(name.c_str(), 1, 0.0, radius + 0.2, 0.0); // Display name above the planet
 
     glPopMatrix();
 }
@@ -367,17 +367,14 @@ void drawAsteroidBelt() {
 
     // Calculate MVP matrix for the asteroid belt using GLM
     glm::mat4 model = glm::mat4(1.0f); // Identity matrix
-    glm::mat4 view = glm::lookAt(
-        glm::vec3(0.0f, 30.0f, 50.0f), // Camera position
-        glm::vec3(0.0f, 0.0f, 0.0f),  // Look at point
-        glm::vec3(0.0f, 1.0f, 0.0f)   // Up vector
-    );
-    glm::mat4 projection = glm::perspective(
-        glm::radians(30.0f), // Field of view
-        800.0f / 600.0f,     // Aspect ratio
-        1.0f,                // Near clipping plane
-        200.0f               // Far clipping plane
-    );
+    // Get the View matrix
+    glm::mat4 view;
+    glGetFloatv(GL_MODELVIEW_MATRIX, &view[0][0]);
+
+    // Get the Projection matrix
+    glm::mat4 projection;
+    glGetFloatv(GL_PROJECTION_MATRIX, &projection[0][0]);
+
     glm::mat4 MVP = projection * view * model;
 
     // Pass MVP matrix to the shader
@@ -464,6 +461,7 @@ void reshape(int w, int h) {
 
 // Main function
 int main(int argc, char** argv) {
+
     glutInit(&argc, argv); // Initialize GLUT
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH); // Set display mode
     glutInitWindowSize(800, 600); // Set window size
