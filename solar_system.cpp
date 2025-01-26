@@ -10,7 +10,7 @@ Copyright (c) 2025 Artem Moroz
 #include <string>          // Include string for moon names
 
 #include <GL/glew.h>       // Include GLEW for OpenGL function loading
-#include <GL/freeglut.h>       // Include GLUT for window management
+#include <GLFW/glfw3.h>
 #include <glm/glm.hpp>     // Include GLM for matrix and vector operations
 #include <glm/gtc/matrix_transform.hpp> // Include GLM transformations
 #include <glm/gtc/type_ptr.hpp> // Include GLM type pointers
@@ -427,8 +427,6 @@ void display() {
 
     // Draw the asteroid belt
     drawAsteroidBelt();
-
-    glutSwapBuffers(); // Swap the front and back buffers
 }
 
 // Function to update the rotation and orbit angles
@@ -449,12 +447,12 @@ void update(int value) {
         }
     }
 
-    glutPostRedisplay(); // Redraw the scene
-    glutTimerFunc(16, update, 0); // Call update function every 16ms (~60 FPS)
+    //glutPostRedisplay(); // Redraw the scene
+    //glutTimerFunc(16, update, 0); // Call update function every 16ms (~60 FPS)
 }
 
 // Function to handle window resizing
-void reshape(int w, int h) {
+void reshape(GLFWwindow* window, int w, int h) {
     glViewport(0, 0, w, h); // Set the viewport to cover the new window
     glMatrixMode(GL_PROJECTION); // Switch to the projection matrix
     glLoadIdentity(); // Reset the projection matrix
@@ -464,18 +462,38 @@ void reshape(int w, int h) {
 
 // Main function
 int main(int argc, char** argv) {
+    if (!glfwInit()) {
+        printf("Failed to initialize GLFW\n");
+        return -1;
+    }
 
-    glutInit(&argc, argv); // Initialize GLUT
-    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH); // Set display mode
-    glutInitWindowSize(800, 600); // Set window size
-    glutCreateWindow("Solar System Simulation"); // Create a window with the given title
+    // Set OpenGL version to 3.3
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
+    GLFWwindow* window = glfwCreateWindow(800, 600, "Solar System Simulation", nullptr, nullptr);
+    if (!window) {
+        glfwTerminate();
+        return -1;
+    }
+
+    // Make the window's context current
+    glfwMakeContextCurrent(window);
 
     init(); // Initialize OpenGL settings
 
-    glutDisplayFunc(display); // Register display callback function
-    glutReshapeFunc(reshape); // Register reshape callback function
-    glutTimerFunc(0, update, 0); // Register timer callback function
+    glfwSetWindowSizeCallback(window, reshape);
 
-    glutMainLoop(); // Enter the GLUT event processing loop
+    while (!glfwWindowShouldClose(window)) {
+        display();
+        glfwSwapBuffers(window);
+        glfwPollEvents();
+    }
+
+    //glutTimerFunc(0, update, 0); // Register timer callback function
+
+
+    glfwTerminate();
     return 0;
 }
