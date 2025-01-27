@@ -8,13 +8,14 @@ Copyright (c) 2025 Artem Moroz
 #include <cstdlib>         // Include cstdlib for exit
 #include <vector>          // Include vector for dynamic arrays
 #include <string>          // Include string for moon names
+#include <iostream>
 
 #include <GL/glew.h>       // Include GLEW for OpenGL function loading
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>     // Include GLM for matrix and vector operations
 #include <glm/gtc/matrix_transform.hpp> // Include GLM transformations
 #include <glm/gtc/type_ptr.hpp> // Include GLM type pointers
-
+#include "stb_easy_font.h"
 
 #ifndef M_PI
 #    define  M_PI  3.14159265358979323846
@@ -80,6 +81,25 @@ GLuint asteroidVAO, asteroidVBO, asteroidIBO; // Vertex Array Object, Vertex Buf
 GLuint numAsteroids = 1000; // Number of asteroids
 float asteroidBeltRotation = 0.0f; // Rotation angle for the asteroid belt
 
+
+
+// OpenGL error callback function
+void GLAPIENTRY openglErrorCallback(
+    GLenum source,
+    GLenum type,
+    GLuint id,
+    GLenum severity,
+    GLsizei length,
+    const GLchar* message,
+    const void* userParam) {
+    std::cerr << "OpenGL Error:" << std::endl;
+    std::cerr << "  Source: " << source << std::endl;
+    std::cerr << "  Type: " << type << std::endl;
+    std::cerr << "  ID: " << id << std::endl;
+    std::cerr << "  Severity: " << severity << std::endl;
+    std::cerr << "  Message: " << message << std::endl;
+}
+
 // Function to load and compile a shader
 GLuint loadShader(const char* source, GLenum type) {
     GLuint shader = glCreateShader(type);
@@ -123,12 +143,28 @@ GLuint createShaderProgram(const char* vertexSource, const char* fragmentSource)
     return program;
 }
 
-// Function to render text at a specific position
-void renderText(const char* text, int big, float x, float y, float z) {
-    glRasterPos3f(x, y, z); // Set the position for the text
-    for (const char* c = text; *c != '\0'; c++) {
-        glutBitmapCharacter(big ? GLUT_BITMAP_HELVETICA_18 : GLUT_BITMAP_HELVETICA_12, *c); // Render each character
+void renderText(const char* text, int bigger, float x, float y, float z) {
+    static char buffer[60000]; // ~300 chars
+
+    // Generate vertex data for the text
+    int num_quads = stb_easy_font_print(0, 0, (char*)text, nullptr, buffer, sizeof(buffer));
+
+    // Apply scaling based on the 'bigger' parameter
+    float scale = 1.0f + (bigger * 0.1f); // Increase size by 10% for each 'bigger' step
+
+    // Transform vertices to apply scaling
+    for (int i = 0; i < num_quads * 4; i++) {
+        float* v = (float*)(buffer + i * 16); // Each vertex is 16 bytes (4 floats: x, y, z, padding)
+        v[0] = x + v[0] * scale; // Scale x
+        v[1] = y + v[1] * scale; // Scale y
+        v[2] = z;                // Set z (depth)
     }
+
+    // Render the text
+    glEnableClientState(GL_VERTEX_ARRAY);
+    glVertexPointer(3, GL_FLOAT, 16, buffer); // Use 3D vertices (x, y, z)
+    glDrawArrays(GL_QUADS, 0, num_quads * 4);
+    glDisableClientState(GL_VERTEX_ARRAY);
 }
 
 // Function to draw a circle (for planet orbits)
@@ -150,7 +186,7 @@ void init() {
         exit(1);
     }
     
-    glClearColor(0.0, 0.0, 0.0, 1.0); // Set background color to black
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // Set background color to black
     glEnable(GL_DEPTH_TEST);          // Enable depth testing for 3D rendering
 
     // Vertex and fragment shaders for the Sun (burning effect)
@@ -261,12 +297,65 @@ void init() {
     
 }
 
+void drawSolidSphere(float radius, int slices, int stacks) {
+    std::vector<float> vertices;
+    std::vector<float> normals;
+    std::vector<float> texCoords;
+
+    for (int i = 0; i <= stacks; ++i) {
+        float phi = static_cast<float>(i) / static_cast<float>(stacks) * M_PI;
+        for (int j = 0; j <= slices; ++j) {
+            float theta = static_cast<float>(j) / static_cast<float>(slices) * 2.0f * M_PI;
+
+            float x = cos(theta) * sin(phi);
+            float y = cos(phi);
+            float z = sin(theta) * sin(phi);
+
+            float u = static_cast<float>(j) / static_cast<float>(slices);
+            float v = static_cast<float>(i) / static_cast<float>(stacks);
+
+            vertices.push_back(radius * x);
+            vertices.push_back(radius * y);
+            vertices.push_back(radius * z);
+
+            normals.push_back(x);
+            normals.push_back(y);
+            normals.push_back(z);
+
+            texCoords.push_back(u);
+            texCoords.push_back(v);
+        }
+    }
+
+    glEnableClientState(GL_VERTEX_ARRAY);
+    glEnableClientState(GL_NORMAL_ARRAY);
+    glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+
+    glVertexPointer(3, GL_FLOAT, 0, vertices.data());
+    glNormalPointer(GL_FLOAT, 0, normals.data());
+    glTexCoordPointer(2, GL_FLOAT, 0, texCoords.data());
+
+    for (int i = 0; i < stacks; ++i) {
+        glBegin(GL_TRIANGLE_STRIP);
+        for (int j = 0; j <= slices; ++j) {
+            int index = i * (slices + 1) + j;
+            glArrayElement(index);
+            glArrayElement(index + slices + 1);
+        }
+        glEnd();
+    }
+
+    glDisableClientState(GL_VERTEX_ARRAY);
+    glDisableClientState(GL_NORMAL_ARRAY);
+    glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+}
+
 // Function to draw the Sun with a burning effect
 void drawSun() {
     glUseProgram(sunShaderProgram);
 
     // Pass time uniform to the shader
-    float time = glutGet(GLUT_ELAPSED_TIME) / 1000.0f; // Get time in seconds
+    float time = glfwGetTime(); // Get time in seconds
     GLint timeLocation = glGetUniformLocation(sunShaderProgram, "time");
     glUniform1f(timeLocation, time);
 
@@ -286,7 +375,7 @@ void drawSun() {
     GLint mvpLocation = glGetUniformLocation(sunShaderProgram, "MVP");
     glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, glm::value_ptr(MVP));
 
-    glutSolidSphere(0.5, 50, 50); // Draw the Sun with a smaller radius (0.5)
+    drawSolidSphere(0.5, 50, 50); // Draw the Sun with a smaller radius (0.5)
 
     glUseProgram(0); // Switch back to fixed-function pipeline
 }
@@ -329,7 +418,7 @@ void drawMoon(float distance, float size, float orbitAngle, float speed, const s
     glRotatef(orbitAngle, 0.0, 1.0, 0.0); // Rotate around the planet
     glTranslatef(distance, 0.0, 0.0);     // Move to the moon's orbit
     glColor3f(0.8f, 0.8f, 0.8f); // Gray color for moons
-    glutSolidSphere(size, 20, 20); // Draw the moon
+    drawSolidSphere(size, 20, 20); // Draw the moon
 
     // Render the moon's name
     glColor3f(1.0, 1.0, 1.0); // White color for text
@@ -345,7 +434,7 @@ void drawPlanet(float radius, float distance, const std::vector<float>& color, f
     glTranslatef(distance, 0.0, 0.0);     // Move to the planet's orbit
     glRotatef(rotationAngle, 0.0, 1.0, 0.0); // Rotate the planet on its axis
     glColor3fv(color.data()); // Set planet color
-    glutSolidSphere(radius, 20, 20); // Draw the planet
+    drawSolidSphere(radius, 20, 20); // Draw the planet
 
     // Draw Saturn's rings if it's Saturn
     if (name == "Saturn") {
@@ -385,7 +474,7 @@ void drawAsteroidBelt() {
     glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, glm::value_ptr(MVP));
 
     // Pass time uniform to the shader for rotation
-    float time = glutGet(GLUT_ELAPSED_TIME) / 1000.0f; // Get time in seconds
+    float time = glfwGetTime(); // Get time in seconds
     GLint timeLocation = glGetUniformLocation(asteroidShaderProgram, "time");
     glUniform1f(timeLocation, time);
 
@@ -404,16 +493,44 @@ void drawAsteroidBelt() {
 // Function to display the solar system
 void display() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear color and depth buffers
-    glLoadIdentity(); // Reset the model-view matrix
 
-    // Set up the camera
-    gluLookAt(0.0, 30.0, 50.0,  // Camera position (farther back and higher)
-              0.0, 0.0, 0.0,    // Look at point (center of the Sun)
-              0.0, 1.0, 0.0);   // Up vector
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    gluPerspective(45.0f, 640.0f / 480.0f, 0.1f, 100.0f);
+
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity(); // Reset the model-view matrix
+  
+    //glm::mat3 mvp = glm::lookAt(glm::vec3(0.0f, 30.0f, 50.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+
+    glm::mat3 mvp = glm::lookAt(glm::vec3(0.0f, 0.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+
+
+    glLoadMatrixf(glm::value_ptr(mvp));
+
+
+    // Draw a simple object (e.g., a colored cube)
+    glBegin(GL_QUADS);
+    // Front face (red)
+    glColor3f(1.0f, 0.0f, 0.0f);
+    glVertex3f(-1.0f, -1.0f, 1.0f);
+    glVertex3f(1.0f, -1.0f, 1.0f);
+    glVertex3f(1.0f, 1.0f, 1.0f);
+    glVertex3f(-1.0f, 1.0f, 1.0f);
+
+    // Back face (green)
+    glColor3f(0.0f, 1.0f, 0.0f);
+    glVertex3f(-1.0f, -1.0f, -1.0f);
+    glVertex3f(1.0f, -1.0f, -1.0f);
+    glVertex3f(1.0f, 1.0f, -1.0f);
+    glVertex3f(-1.0f, 1.0f, -1.0f);
+
+    // Other faces omitted for brevity...
+    glEnd();
 
     // Draw the Sun at the center
-    drawSun();
-
+    //drawSun();
+    /*
     // Draw planet orbits
     glColor3f(0.5f, 0.5f, 0.5f); // Gray color for orbits
     for (int i = 0; i < 9; i++) {
@@ -422,15 +539,17 @@ void display() {
 
     // Draw all 9 planets with their names and moons
     for (int i = 0; i < 9; i++) {
-        drawPlanet(planetSizes[i], planetDistances[i], planetColors[i], planetOrbits[i], planetRotations[i], planetNames[i], planetMoons[i]);
+        //drawPlanet(planetSizes[i], planetDistances[i], planetColors[i], planetOrbits[i], planetRotations[i], planetNames[i], planetMoons[i]);
     }
 
     // Draw the asteroid belt
-    drawAsteroidBelt();
+    //drawAsteroidBelt();
+
+    */
 }
 
 // Function to update the rotation and orbit angles
-void update(int value) {
+void update() {
     // Update planet rotations and orbits
     for (int i = 0; i < 9; i++) {
         planetRotations[i] += 1.0f; // Rotate each planet on its axis
@@ -460,6 +579,10 @@ void reshape(GLFWwindow* window, int w, int h) {
     glMatrixMode(GL_MODELVIEW); // Switch back to the model-view matrix
 }
 
+glm::mat4 createViewMatrix(glm::vec3 eye, glm::vec3 center, glm::vec3 up) {
+    return glm::lookAt(eye, center, up);
+}
+
 // Main function
 int main(int argc, char** argv) {
     if (!glfwInit()) {
@@ -467,10 +590,12 @@ int main(int argc, char** argv) {
         return -1;
     }
 
+    glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE); // Enable debug context
+
     // Set OpenGL version to 3.3
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    //glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    //glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    //glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
     GLFWwindow* window = glfwCreateWindow(800, 600, "Solar System Simulation", nullptr, nullptr);
     if (!window) {
@@ -478,22 +603,106 @@ int main(int argc, char** argv) {
         return -1;
     }
 
+    
+
     // Make the window's context current
     glfwMakeContextCurrent(window);
 
-    init(); // Initialize OpenGL settings
+    // Set the swap interval to 1 to enable vsync (optional)
+    glfwSwapInterval(1);
 
-    glfwSetWindowSizeCallback(window, reshape);
+    init(); // Initialize OpenGL settings
+    
+    //glfwSetWindowSizeCallback(window, reshape);
+    //reshape(window, 800, 600);
+
+    // Initialize OpenGL debug context and set the error callback
+    if (glfwExtensionSupported("GL_ARB_debug_output")) {
+        std::cout << "Debug output supported" << std::endl;
+        glEnable(GL_DEBUG_OUTPUT);
+        glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+        glDebugMessageCallback(openglErrorCallback, nullptr);
+        glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr, GL_TRUE);
+    }
+    else {
+        std::cerr << "Debug output not supported" << std::endl;
+    }
+
+    double lastTime = glfwGetTime();
+    const double updateInterval = 0.016; // 16 milliseconds
+
+    glm::vec3 eye(0.0f, 0.0f, 5.0f);    // Camera position
+    glm::vec3 center(0.0f, 0.0f, 0.0f); // Point the camera is looking at
+    glm::vec3 up(0.0f, 1.0f, 0.0f);     // Up vector
 
     while (!glfwWindowShouldClose(window)) {
+
+
+        // Clear the screen
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        // Set the projection matrix
+        glMatrixMode(GL_PROJECTION);
+        glLoadIdentity();
+        gluPerspective(45.0f, 800.0f / 600.0f, 0.1f, 100.0f);
+
+        // Set the modelview matrix
+        glMatrixMode(GL_MODELVIEW);
+        glLoadIdentity();
+
+        // Create the view matrix using glm::lookAt
+        glm::mat4 viewMatrix = createViewMatrix(eye, center, up);
+
+        // Apply the view matrix to the current OpenGL context
+        glLoadMatrixf(glm::value_ptr(viewMatrix));
+
+        // Draw a simple object (e.g., a colored cube)
+        glBegin(GL_QUADS);
+        // Front face (red)
+        glColor3f(1.0f, 0.0f, 0.0f);
+        glVertex3f(-1.0f, -1.0f, 1.0f);
+        glVertex3f(1.0f, -1.0f, 1.0f);
+        glVertex3f(1.0f, 1.0f, 1.0f);
+        glVertex3f(-1.0f, 1.0f, 1.0f);
+
+        // Back face (green)
+        glColor3f(0.0f, 1.0f, 0.0f);
+        glVertex3f(-1.0f, -1.0f, -1.0f);
+        glVertex3f(1.0f, -1.0f, -1.0f);
+        glVertex3f(1.0f, 1.0f, -1.0f);
+        glVertex3f(-1.0f, 1.0f, -1.0f);
+
+        // Other faces omitted for brevity...
+        glEnd();
+
+        // Swap front and back buffers
+        glfwSwapBuffers(window);
+
+        // Poll for and process events
+        glfwPollEvents();
+
+
+        /*
+        double currentTime = glfwGetTime();
+        // Update logic
+        if ((currentTime - lastTime) > updateInterval) {
+            //update();
+            lastTime = currentTime;
+        }
+
         display();
+
+
         glfwSwapBuffers(window);
         glfwPollEvents();
+        */
+
+
     }
 
     //glutTimerFunc(0, update, 0); // Register timer callback function
 
-
+    glfwDestroyWindow(window);
     glfwTerminate();
     return 0;
 }
