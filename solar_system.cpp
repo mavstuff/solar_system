@@ -81,6 +81,9 @@ GLuint asteroidVAO, asteroidVBO, asteroidIBO; // Vertex Array Object, Vertex Buf
 GLuint numAsteroids = 1000; // Number of asteroids
 float asteroidBeltRotation = 0.0f; // Rotation angle for the asteroid belt
 
+glm::mat4 createViewMatrix(glm::vec3 eye, glm::vec3 center, glm::vec3 up) {
+    return glm::lookAt(eye, center, up);
+}
 
 
 // OpenGL error callback function
@@ -422,7 +425,7 @@ void drawMoon(float distance, float size, float orbitAngle, float speed, const s
 
     // Render the moon's name
     glColor3f(1.0, 1.0, 1.0); // White color for text
-    renderText(name.c_str(), 0, 0.0, size + 0.05, 0.0); // Display name above the moon
+    //renderText(name.c_str(), 0, 0.0, size + 0.05, 0.0); // Display name above the moon
 
     glPopMatrix();
 }
@@ -448,7 +451,7 @@ void drawPlanet(float radius, float distance, const std::vector<float>& color, f
 
     // Render the planet's name
     glColor3f(1.0, 1.0, 1.0); // White color for text
-    renderText(name.c_str(), 1, 0.0, radius + 0.2, 0.0); // Display name above the planet
+    //renderText(name.c_str(), 1, 0.0, radius + 0.2, 0.0); // Display name above the planet
 
     glPopMatrix();
 }
@@ -491,46 +494,23 @@ void drawAsteroidBelt() {
 }
 
 // Function to display the solar system
-void display() {
+void display(GLFWwindow* window) {
+
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear color and depth buffers
-
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    gluPerspective(45.0f, 640.0f / 480.0f, 0.1f, 100.0f);
-
-    glMatrixMode(GL_MODELVIEW);
+    
     glLoadIdentity(); // Reset the model-view matrix
-  
-    //glm::mat3 mvp = glm::lookAt(glm::vec3(0.0f, 30.0f, 50.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
-    glm::mat3 mvp = glm::lookAt(glm::vec3(0.0f, 0.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    // Create the view matrix using glm::lookAt
+    glm::mat4 viewMatrix = glm::lookAt(
+        glm::vec3(0.0f, 30.0f, 50.0f), 
+        glm::vec3(0.0f, 0.0f, 0.0f), 
+        glm::vec3(0.0f, 1.0f, 0.0f));
 
-
-    glLoadMatrixf(glm::value_ptr(mvp));
-
-
-    // Draw a simple object (e.g., a colored cube)
-    glBegin(GL_QUADS);
-    // Front face (red)
-    glColor3f(1.0f, 0.0f, 0.0f);
-    glVertex3f(-1.0f, -1.0f, 1.0f);
-    glVertex3f(1.0f, -1.0f, 1.0f);
-    glVertex3f(1.0f, 1.0f, 1.0f);
-    glVertex3f(-1.0f, 1.0f, 1.0f);
-
-    // Back face (green)
-    glColor3f(0.0f, 1.0f, 0.0f);
-    glVertex3f(-1.0f, -1.0f, -1.0f);
-    glVertex3f(1.0f, -1.0f, -1.0f);
-    glVertex3f(1.0f, 1.0f, -1.0f);
-    glVertex3f(-1.0f, 1.0f, -1.0f);
-
-    // Other faces omitted for brevity...
-    glEnd();
-
+    glLoadMatrixf(glm::value_ptr(viewMatrix));
+   
     // Draw the Sun at the center
-    //drawSun();
-    /*
+    drawSun();
+    
     // Draw planet orbits
     glColor3f(0.5f, 0.5f, 0.5f); // Gray color for orbits
     for (int i = 0; i < 9; i++) {
@@ -539,13 +519,13 @@ void display() {
 
     // Draw all 9 planets with their names and moons
     for (int i = 0; i < 9; i++) {
-        //drawPlanet(planetSizes[i], planetDistances[i], planetColors[i], planetOrbits[i], planetRotations[i], planetNames[i], planetMoons[i]);
+        drawPlanet(planetSizes[i], planetDistances[i], planetColors[i], planetOrbits[i], planetRotations[i], planetNames[i], planetMoons[i]);
     }
 
     // Draw the asteroid belt
-    //drawAsteroidBelt();
+    drawAsteroidBelt();
 
-    */
+    
 }
 
 // Function to update the rotation and orbit angles
@@ -579,9 +559,7 @@ void reshape(GLFWwindow* window, int w, int h) {
     glMatrixMode(GL_MODELVIEW); // Switch back to the model-view matrix
 }
 
-glm::mat4 createViewMatrix(glm::vec3 eye, glm::vec3 center, glm::vec3 up) {
-    return glm::lookAt(eye, center, up);
-}
+
 
 // Main function
 int main(int argc, char** argv) {
@@ -609,13 +587,10 @@ int main(int argc, char** argv) {
     glfwMakeContextCurrent(window);
 
     // Set the swap interval to 1 to enable vsync (optional)
-    glfwSwapInterval(1);
+    //glfwSwapInterval(1);
 
     init(); // Initialize OpenGL settings
     
-    //glfwSetWindowSizeCallback(window, reshape);
-    //reshape(window, 800, 600);
-
     // Initialize OpenGL debug context and set the error callback
     if (glfwExtensionSupported("GL_ARB_debug_output")) {
         std::cout << "Debug output supported" << std::endl;
@@ -628,52 +603,25 @@ int main(int argc, char** argv) {
         std::cerr << "Debug output not supported" << std::endl;
     }
 
+    glfwSetWindowSizeCallback(window, reshape);
+    {
+        int w, h;
+        glfwGetWindowSize(window, &w, &h);
+        reshape(window, w, h);
+    }
+
     double lastTime = glfwGetTime();
     const double updateInterval = 0.016; // 16 milliseconds
 
-    glm::vec3 eye(0.0f, 0.0f, 5.0f);    // Camera position
-    glm::vec3 center(0.0f, 0.0f, 0.0f); // Point the camera is looking at
-    glm::vec3 up(0.0f, 1.0f, 0.0f);     // Up vector
-
     while (!glfwWindowShouldClose(window)) {
+        double currentTime = glfwGetTime();
+        // Update logic
+        if ((currentTime - lastTime) > updateInterval) {
+            update();
+            lastTime = currentTime;
+        }
 
-
-        // Clear the screen
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        // Set the projection matrix
-        glMatrixMode(GL_PROJECTION);
-        glLoadIdentity();
-        gluPerspective(45.0f, 800.0f / 600.0f, 0.1f, 100.0f);
-
-        // Set the modelview matrix
-        glMatrixMode(GL_MODELVIEW);
-        glLoadIdentity();
-
-        // Create the view matrix using glm::lookAt
-        glm::mat4 viewMatrix = createViewMatrix(eye, center, up);
-
-        // Apply the view matrix to the current OpenGL context
-        glLoadMatrixf(glm::value_ptr(viewMatrix));
-
-        // Draw a simple object (e.g., a colored cube)
-        glBegin(GL_QUADS);
-        // Front face (red)
-        glColor3f(1.0f, 0.0f, 0.0f);
-        glVertex3f(-1.0f, -1.0f, 1.0f);
-        glVertex3f(1.0f, -1.0f, 1.0f);
-        glVertex3f(1.0f, 1.0f, 1.0f);
-        glVertex3f(-1.0f, 1.0f, 1.0f);
-
-        // Back face (green)
-        glColor3f(0.0f, 1.0f, 0.0f);
-        glVertex3f(-1.0f, -1.0f, -1.0f);
-        glVertex3f(1.0f, -1.0f, -1.0f);
-        glVertex3f(1.0f, 1.0f, -1.0f);
-        glVertex3f(-1.0f, 1.0f, -1.0f);
-
-        // Other faces omitted for brevity...
-        glEnd();
+        display(window);
 
         // Swap front and back buffers
         glfwSwapBuffers(window);
@@ -681,26 +629,7 @@ int main(int argc, char** argv) {
         // Poll for and process events
         glfwPollEvents();
 
-
-        /*
-        double currentTime = glfwGetTime();
-        // Update logic
-        if ((currentTime - lastTime) > updateInterval) {
-            //update();
-            lastTime = currentTime;
-        }
-
-        display();
-
-
-        glfwSwapBuffers(window);
-        glfwPollEvents();
-        */
-
-
     }
-
-    //glutTimerFunc(0, update, 0); // Register timer callback function
 
     glfwDestroyWindow(window);
     glfwTerminate();
