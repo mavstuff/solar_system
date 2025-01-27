@@ -11,11 +11,20 @@ Copyright (c) 2025 Artem Moroz
 #include <iostream>
 
 #include <GL/glew.h>       // Include GLEW for OpenGL function loading
-#include <GLFW/glfw3.h>
 #include <glm/glm.hpp>     // Include GLM for matrix and vector operations
 #include <glm/gtc/matrix_transform.hpp> // Include GLM transformations
 #include <glm/gtc/type_ptr.hpp> // Include GLM type pointers
+
+#define SDL_MAIN_HANDLED
+#include <SDL.h>
+#include <SDL_main.h>
+#include <SDL_opengl.h>
+
 #include "stb_easy_font.h"
+
+#ifdef main
+#undef main
+#endif /* main */
 
 #ifndef M_PI
 #    define  M_PI  3.14159265358979323846
@@ -80,6 +89,10 @@ std::vector<glm::vec3> asteroidPositions; // Positions of asteroids
 GLuint asteroidVAO, asteroidVBO, asteroidIBO; // Vertex Array Object, Vertex Buffer Object, Index Buffer Object
 GLuint numAsteroids = 1000; // Number of asteroids
 float asteroidBeltRotation = 0.0f; // Rotation angle for the asteroid belt
+
+SDL_Window* g_Window = NULL;
+SDL_GLContext g_glContext = NULL;
+bool g_bQuit = false;
 
 glm::mat4 createViewMatrix(glm::vec3 eye, glm::vec3 center, glm::vec3 up) {
     return glm::lookAt(eye, center, up);
@@ -146,6 +159,33 @@ GLuint createShaderProgram(const char* vertexSource, const char* fragmentSource)
     return program;
 }
 
+
+void worldToWindowCoords(const glm::vec3& worldCoords, glm::vec2& windowCoords) {
+    // Step 1: Get the current model-view and projection matrices
+    glm::mat4 modelView;
+    glm::mat4 projection;
+    glGetFloatv(GL_MODELVIEW_MATRIX, glm::value_ptr(modelView));
+    glGetFloatv(GL_PROJECTION_MATRIX, glm::value_ptr(projection));
+
+    // Step 2: Get the current viewport
+    GLint viewport[4];
+    glGetIntegerv(GL_VIEWPORT, viewport);
+    glm::vec4 viewportVec(viewport[0], viewport[1], viewport[2], viewport[3]);
+
+    // Step 3: Transform world coordinates to clip coordinates
+    glm::vec4 clipCoords = projection * modelView * glm::vec4(worldCoords, 1.0f);
+
+    // Step 4: Perform perspective divide to get normalized device coordinates (NDC)
+    glm::vec3 ndcCoords = glm::vec3(clipCoords) / clipCoords.w;
+
+    // Step 5: Map NDC to window coordinates
+    windowCoords.x = viewportVec[0] + (ndcCoords.x + 1.0f) / 2.0f * viewportVec[2];
+    windowCoords.y = viewportVec[1] + (ndcCoords.y + 1.0f) / 2.0f * viewportVec[3];
+
+    // Step 6: Flip y-axis to match OpenGL's coordinate system
+    windowCoords.y = viewportVec[3] - windowCoords.y;
+}
+
 void renderText(const char* text, int bigger, float x, float y, float z) {
     static char buffer[60000]; // ~300 chars
 
@@ -153,13 +193,13 @@ void renderText(const char* text, int bigger, float x, float y, float z) {
     int num_quads = stb_easy_font_print(0, 0, (char*)text, nullptr, buffer, sizeof(buffer));
 
     // Apply scaling based on the 'bigger' parameter
-    float scale = 1.0f + (bigger * 0.1f); // Increase size by 10% for each 'bigger' step
+    float scale = 0.02f + (bigger * 0.1f); // Increase size by 10% for each 'bigger' step
 
     // Transform vertices to apply scaling
     for (int i = 0; i < num_quads * 4; i++) {
         float* v = (float*)(buffer + i * 16); // Each vertex is 16 bytes (4 floats: x, y, z, padding)
         v[0] = x + v[0] * scale; // Scale x
-        v[1] = y + v[1] * scale; // Scale y
+        v[1] = y - v[1] * scale; // Scale y
         v[2] = z;                // Set z (depth)
     }
 
@@ -358,7 +398,7 @@ void drawSun() {
     glUseProgram(sunShaderProgram);
 
     // Pass time uniform to the shader
-    float time = glfwGetTime(); // Get time in seconds
+    float time = SDL_GetTicks() / 1000.0f; // Get time in seconds
     GLint timeLocation = glGetUniformLocation(sunShaderProgram, "time");
     glUniform1f(timeLocation, time);
 
@@ -449,9 +489,11 @@ void drawPlanet(float radius, float distance, const std::vector<float>& color, f
         drawMoon(moon.distance, moon.size, moon.orbit, moon.speed, moon.name);
     }
 
+   
     // Render the planet's name
     glColor3f(1.0, 1.0, 1.0); // White color for text
-    //renderText(name.c_str(), 1, 0.0, radius + 0.2, 0.0); // Display name above the planet
+    
+    renderText(name.c_str(), 1, 0.0, radius + 0.2, 0.0); // Display name above the planet
 
     glPopMatrix();
 }
@@ -477,7 +519,7 @@ void drawAsteroidBelt() {
     glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, glm::value_ptr(MVP));
 
     // Pass time uniform to the shader for rotation
-    float time = glfwGetTime(); // Get time in seconds
+    float time = SDL_GetTicks() / 1000.0f; // Get time in seconds
     GLint timeLocation = glGetUniformLocation(asteroidShaderProgram, "time");
     glUniform1f(timeLocation, time);
 
@@ -494,7 +536,7 @@ void drawAsteroidBelt() {
 }
 
 // Function to display the solar system
-void display(GLFWwindow* window) {
+void display() {
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear color and depth buffers
     
@@ -551,7 +593,7 @@ void update() {
 }
 
 // Function to handle window resizing
-void reshape(GLFWwindow* window, int w, int h) {
+void reshape(int w, int h) {
     glViewport(0, 0, w, h); // Set the viewport to cover the new window
     glMatrixMode(GL_PROJECTION); // Switch to the projection matrix
     glLoadIdentity(); // Reset the projection matrix
@@ -560,78 +602,88 @@ void reshape(GLFWwindow* window, int w, int h) {
 }
 
 
-
-// Main function
-int main(int argc, char** argv) {
-    if (!glfwInit()) {
-        printf("Failed to initialize GLFW\n");
-        return -1;
-    }
-
-    glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE); // Enable debug context
-
-    // Set OpenGL version to 3.3
-    //glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    //glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    //glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-    GLFWwindow* window = glfwCreateWindow(800, 600, "Solar System Simulation", nullptr, nullptr);
-    if (!window) {
-        glfwTerminate();
-        return -1;
-    }
-
-    
-
-    // Make the window's context current
-    glfwMakeContextCurrent(window);
-
-    // Set the swap interval to 1 to enable vsync (optional)
-    //glfwSwapInterval(1);
-
-    init(); // Initialize OpenGL settings
-    
-    // Initialize OpenGL debug context and set the error callback
-    if (glfwExtensionSupported("GL_ARB_debug_output")) {
-        std::cout << "Debug output supported" << std::endl;
-        glEnable(GL_DEBUG_OUTPUT);
-        glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-        glDebugMessageCallback(openglErrorCallback, nullptr);
-        glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr, GL_TRUE);
-    }
-    else {
-        std::cerr << "Debug output not supported" << std::endl;
-    }
-
-    glfwSetWindowSizeCallback(window, reshape);
+void mainloop()
+{
+    bool bRedraw = false;
+    SDL_Event e = {};
+    while (SDL_PollEvent(&e))
     {
-        int w, h;
-        glfwGetWindowSize(window, &w, &h);
-        reshape(window, w, h);
-    }
+        switch (e.type) {
 
-    double lastTime = glfwGetTime();
-    const double updateInterval = 0.016; // 16 milliseconds
+        case SDL_QUIT:
+        {
+            g_bQuit = true;
+            return;
+            break;
+        }
+        case SDL_WINDOWEVENT:
+        {
+            switch (e.window.event)
+            {
+            case SDL_WINDOWEVENT_EXPOSED:
+            case SDL_WINDOWEVENT_RESIZED:
+            case SDL_WINDOWEVENT_SIZE_CHANGED:
+                {
+                    int w, h;
+                    SDL_GetWindowSize(g_Window, &w, &h);
+                    reshape(w,h);
+               }
+            break;
+            }
 
-    while (!glfwWindowShouldClose(window)) {
-        double currentTime = glfwGetTime();
-        // Update logic
-        if ((currentTime - lastTime) > updateInterval) {
-            update();
-            lastTime = currentTime;
+            break;
         }
 
-        display(window);
+        
 
-        // Swap front and back buffers
-        glfwSwapBuffers(window);
-
-        // Poll for and process events
-        glfwPollEvents();
-
+        default:
+            break;
+        }
     }
 
-    glfwDestroyWindow(window);
-    glfwTerminate();
+    static Uint32 start = SDL_GetTicks();
+
+    Uint32 stop = SDL_GetTicks();
+
+    if ((stop - start) >= 16)
+    {
+        update();
+        start = stop;
+    }
+    
+    display();
+    SDL_GL_SwapWindow(g_Window);
+}
+
+
+
+// Main function
+int main(int argc, char** argv) 
+{
+    SDL_SetMainReady();
+
+    if (SDL_Init(SDL_INIT_VIDEO) == 0)
+    {
+        //Create window
+        g_Window = SDL_CreateWindow("Solar System Simulation", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 800, 600, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_SHOWN);
+        if (g_Window != NULL)
+        {
+            g_glContext = SDL_GL_CreateContext(g_Window);
+            if (g_glContext != NULL)
+            {
+                init();
+
+                while(!g_bQuit)
+                    mainloop();
+
+               
+                SDL_GL_DeleteContext(g_glContext);
+            }
+          
+
+            SDL_DestroyWindow(g_Window);
+        }
+        SDL_Quit();
+    }
     return 0;
 }

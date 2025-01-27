@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 11)
 
 add_subdirectory(glm EXCLUDE_FROM_ALL)
 add_subdirectory(glew/build/cmake EXCLUDE_FROM_ALL)
-add_subdirectory(glfw EXCLUDE_FROM_ALL)
+add_subdirectory(SDL EXCLUDE_FROM_ALL)
 
 # Find required libraries
 #find_package(OpenGL REQUIRED)
@@ -15,7 +15,7 @@ add_subdirectory(glfw EXCLUDE_FROM_ALL)
 include_directories(
     "glm/"
 	"glew/include/"
-	"gfw/include"
+	"SDL/include/"
     .
 )
 
@@ -28,4 +28,4 @@ set(SOURCE_FILES solar_system.cpp)
 add_executable(solar_system ${SOURCE_FILES})
 
 # Link libraries
-target_link_libraries(solar_system glew_s glfw ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(solar_system glew_s SDL2-static ${CMAKE_THREAD_LIBS_INIT})
