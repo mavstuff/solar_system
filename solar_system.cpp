@@ -14,6 +14,8 @@ Copyright (c) 2025 Artem Moroz
 #include <glm/glm.hpp>     // Include GLM for matrix and vector operations
 #include <glm/gtc/matrix_transform.hpp> // Include GLM transformations
 #include <glm/gtc/type_ptr.hpp> // Include GLM type pointers
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/matrix_decompose.hpp>
 
 #define SDL_MAIN_HANDLED
 #include <SDL.h>
@@ -158,34 +160,6 @@ GLuint createShaderProgram(const char* vertexSource, const char* fragmentSource)
 
     return program;
 }
-
-
-void worldToWindowCoords(const glm::vec3& worldCoords, glm::vec2& windowCoords) {
-    // Step 1: Get the current model-view and projection matrices
-    glm::mat4 modelView;
-    glm::mat4 projection;
-    glGetFloatv(GL_MODELVIEW_MATRIX, glm::value_ptr(modelView));
-    glGetFloatv(GL_PROJECTION_MATRIX, glm::value_ptr(projection));
-
-    // Step 2: Get the current viewport
-    GLint viewport[4];
-    glGetIntegerv(GL_VIEWPORT, viewport);
-    glm::vec4 viewportVec(viewport[0], viewport[1], viewport[2], viewport[3]);
-
-    // Step 3: Transform world coordinates to clip coordinates
-    glm::vec4 clipCoords = projection * modelView * glm::vec4(worldCoords, 1.0f);
-
-    // Step 4: Perform perspective divide to get normalized device coordinates (NDC)
-    glm::vec3 ndcCoords = glm::vec3(clipCoords) / clipCoords.w;
-
-    // Step 5: Map NDC to window coordinates
-    windowCoords.x = viewportVec[0] + (ndcCoords.x + 1.0f) / 2.0f * viewportVec[2];
-    windowCoords.y = viewportVec[1] + (ndcCoords.y + 1.0f) / 2.0f * viewportVec[3];
-
-    // Step 6: Flip y-axis to match OpenGL's coordinate system
-    windowCoords.y = viewportVec[3] - windowCoords.y;
-}
-
 void renderText(const char* text, int bigger, float x, float y, float z) {
     static char buffer[60000]; // ~300 chars
 
@@ -193,7 +167,7 @@ void renderText(const char* text, int bigger, float x, float y, float z) {
     int num_quads = stb_easy_font_print(0, 0, (char*)text, nullptr, buffer, sizeof(buffer));
 
     // Apply scaling based on the 'bigger' parameter
-    float scale = 0.02f + (bigger * 0.1f); // Increase size by 10% for each 'bigger' step
+    float scale = 0.1f + (bigger * 0.1f); // Increase size by 10% for each 'bigger' step
 
     // Transform vertices to apply scaling
     for (int i = 0; i < num_quads * 4; i++) {
@@ -456,16 +430,34 @@ void drawSaturnRings(float radius) {
 }
 
 // Function to draw a moon
-void drawMoon(float distance, float size, float orbitAngle, float speed, const std::string& name) {
+void drawMoon(float distance, float size, float orbitAngle, float planetAngle, float speed, const std::string& name) {
     glPushMatrix();
-    glRotatef(orbitAngle, 0.0, 1.0, 0.0); // Rotate around the planet
-    glTranslatef(distance, 0.0, 0.0);     // Move to the moon's orbit
+    
+    glm::mat4 mvorig, mvorbit, mvplanet, mvtext;
+    glGetFloatv(GL_MODELVIEW_MATRIX, &mvorig[0][0]);
+
+    mvorbit = mvorig;
+    // Calculate the Model-View-Projection matrix
+    // Rotate around the Sun
+    mvorbit = glm::rotate(mvorbit, glm::radians(orbitAngle), glm::vec3(0.0f, 1.0f, 0.0f));
+    // Move to the planet's orbit
+    mvorbit = glm::translate(mvorbit, glm::vec3(distance, 0.0f, 0.0f));
+    // Rotate the planet on its axis
+
+    mvtext = glm::rotate(mvorbit, glm::radians(180.0f - orbitAngle - planetAngle), glm::vec3(0.0f, 1.0f, 0.0f));
+
+    glLoadMatrixf(glm::value_ptr(mvorbit));
+
+    //glRotatef(orbitAngle, 0.0, 1.0, 0.0); // Rotate around the planet
+    //glTranslatef(distance, 0.0, 0.0);     // Move to the moon's orbit
     glColor3f(0.8f, 0.8f, 0.8f); // Gray color for moons
     drawSolidSphere(size, 20, 20); // Draw the moon
 
+    glLoadMatrixf(glm::value_ptr(mvtext));
+
     // Render the moon's name
-    glColor3f(1.0, 1.0, 1.0); // White color for text
-    //renderText(name.c_str(), 0, 0.0, size + 0.05, 0.0); // Display name above the moon
+    glColor3f(1.0f, 1.0f, 1.0f); // White color for text
+    renderText(name.c_str(), 0, 0.0f, size + 0.5f, 0.0f); // Display name above the moon
 
     glPopMatrix();
 }
@@ -473,9 +465,24 @@ void drawMoon(float distance, float size, float orbitAngle, float speed, const s
 // Function to draw a planet and its moons
 void drawPlanet(float radius, float distance, const std::vector<float>& color, float orbitAngle, float rotationAngle, const std::string& name, const std::vector<Moon>& moons) {
     glPushMatrix();
-    glRotatef(orbitAngle, 0.0, 1.0, 0.0); // Rotate around the Sun
-    glTranslatef(distance, 0.0, 0.0);     // Move to the planet's orbit
-    glRotatef(rotationAngle, 0.0, 1.0, 0.0); // Rotate the planet on its axis
+    // Get the View matrix
+    glm::mat4 mvorig, mvorbit, mvplanet, mvtext;
+    glGetFloatv(GL_MODELVIEW_MATRIX, &mvorig[0][0]);
+
+    mvorbit = mvorig;
+    // Calculate the Model-View-Projection matrix
+    // Rotate around the Sun
+    mvorbit = glm::rotate(mvorbit, glm::radians(orbitAngle), glm::vec3(0.0f, 1.0f, 0.0f));
+    // Move to the planet's orbit
+    mvorbit = glm::translate(mvorbit, glm::vec3(distance, 0.0f, 0.0f));
+    // Rotate the planet on its axis
+    mvplanet = glm::rotate(mvorbit, glm::radians(rotationAngle), glm::vec3(0.0f, 1.0f, 0.0f));
+    // Rotate the text
+    mvtext = glm::rotate(mvorbit, glm::radians(360.0f - orbitAngle), glm::vec3(0.0f, 1.0f, 0.0f));
+
+    //load modelview matrix
+    glLoadMatrixf(glm::value_ptr(mvplanet));
+
     glColor3fv(color.data()); // Set planet color
     drawSolidSphere(radius, 20, 20); // Draw the planet
 
@@ -486,14 +493,14 @@ void drawPlanet(float radius, float distance, const std::vector<float>& color, f
 
     // Draw moons
     for (const Moon& moon : moons) {
-        drawMoon(moon.distance, moon.size, moon.orbit, moon.speed, moon.name);
+        drawMoon(moon.distance, moon.size, moon.orbit, rotationAngle, moon.speed, moon.name);
     }
 
+    glLoadMatrixf(glm::value_ptr(mvtext));
    
     // Render the planet's name
     glColor3f(1.0, 1.0, 1.0); // White color for text
-    
-    renderText(name.c_str(), 1, 0.0, radius + 0.2, 0.0); // Display name above the planet
+    renderText(name.c_str(), 1, 0.0f, radius + 1.0f, 0.0f); // Display name above the planet
 
     glPopMatrix();
 }
