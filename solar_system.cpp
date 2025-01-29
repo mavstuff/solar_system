@@ -438,13 +438,14 @@ void drawMoon(float distance, float size, float orbitAngle, float planetAngle, f
 
     mvorbit = mvorig;
     // Calculate the Model-View-Projection matrix
-    // Rotate around the Sun
+    
+    // Move to the moon's orbit
     mvorbit = glm::rotate(mvorbit, glm::radians(orbitAngle), glm::vec3(0.0f, 1.0f, 0.0f));
-    // Move to the planet's orbit
+    
+    // Rotate the moon on its axis
     mvorbit = glm::translate(mvorbit, glm::vec3(distance, 0.0f, 0.0f));
-    // Rotate the planet on its axis
 
-    mvtext = glm::rotate(mvorbit, glm::radians(180.0f - orbitAngle - planetAngle), glm::vec3(0.0f, 1.0f, 0.0f));
+    mvtext = glm::rotate(mvorbit, glm::radians(360.0f - planetAngle - orbitAngle), glm::vec3(0.0f, 1.0f, 0.0f));
 
     glLoadMatrixf(glm::value_ptr(mvorbit));
 
@@ -457,7 +458,7 @@ void drawMoon(float distance, float size, float orbitAngle, float planetAngle, f
 
     // Render the moon's name
     glColor3f(1.0f, 1.0f, 1.0f); // White color for text
-    renderText(name.c_str(), 0, 0.0f, size + 0.5f, 0.0f); // Display name above the moon
+    renderText(name.c_str(), 0, 0.0f, - (size + 0.5f), 0.0f); // Display name above the moon
 
     glPopMatrix();
 }
@@ -493,7 +494,7 @@ void drawPlanet(float radius, float distance, const std::vector<float>& color, f
 
     // Draw moons
     for (const Moon& moon : moons) {
-        drawMoon(moon.distance, moon.size, moon.orbit, rotationAngle, moon.speed, moon.name);
+        drawMoon(moon.distance, moon.size, moon.orbit, rotationAngle + orbitAngle, moon.speed, moon.name);
     }
 
     glLoadMatrixf(glm::value_ptr(mvtext));
@@ -648,6 +649,8 @@ void mainloop()
         }
     }
 
+    SDL_Delay(16);
+
     static Uint32 start = SDL_GetTicks();
 
     Uint32 stop = SDL_GetTicks();
@@ -660,6 +663,7 @@ void mainloop()
     
     display();
     SDL_GL_SwapWindow(g_Window);
+
 }
 
 
@@ -680,9 +684,10 @@ int main(int argc, char** argv)
             {
                 init();
 
-                while(!g_bQuit)
+                while (!g_bQuit)
+                {
                     mainloop();
-
+                }
                
                 SDL_GL_DeleteContext(g_glContext);
             }
