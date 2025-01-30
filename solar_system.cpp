@@ -613,6 +613,11 @@ void reshape(int w, int h) {
 void mainloop()
 {
     bool bRedraw = false;
+    
+    const Uint32 nFrameTime = 1000 / 60;
+    Uint32 nFrameStart = SDL_GetTicks();
+
+
     SDL_Event e = {};
     while (SDL_PollEvent(&e))
     {
@@ -649,21 +654,15 @@ void mainloop()
         }
     }
 
-    SDL_Delay(16);
-
-    static Uint32 start = SDL_GetTicks();
-
-    Uint32 stop = SDL_GetTicks();
-
-    if ((stop - start) >= 16)
-    {
-        update();
-        start = stop;
-    }
-    
+    update();
     display();
     SDL_GL_SwapWindow(g_Window);
 
+    Uint32 nElapsedTime = SDL_GetTicks() - nFrameStart;
+    if (nFrameTime > nElapsedTime)
+    {
+        SDL_Delay(nFrameTime - nElapsedTime);
+    }
 }
 
 
