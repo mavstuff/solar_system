@@ -93,6 +93,8 @@ GLuint asteroidShaderProgram;
 // Asteroid belt data
 std::vector<glm::vec3> asteroidPositions; // Positions of asteroids
 GLuint asteroidVAO, asteroidVBO, asteroidIBO; // Vertex Array Object, Vertex Buffer Object, Index Buffer Object
+GLuint gvaoPlanet, gvboPlanet, gnboPlanet, geboPlanet;
+
 GLuint numAsteroids = 1000; // Number of asteroids
 float asteroidBeltRotation = 0.0f; // Rotation angle for the asteroid belt
 
@@ -343,7 +345,7 @@ void init() {
     
 }
 
-void drawSolidSphere(float radius, int slices, int stacks) {
+void prepareSolidSphere(float radius, int slices, int stacks) {
     // Generate vertices, normals, and indices for the sphere
     std::vector<glm::vec3> vertices;
     std::vector<glm::vec3> normals;
@@ -385,41 +387,62 @@ void drawSolidSphere(float radius, int slices, int stacks) {
     }
 
     // Create and bind a VAO
-    GLuint vao;
-    glGenVertexArrays(1, &vao);
-    glBindVertexArray(vao);
+    glGenVertexArrays(1, &gvaoPlanet);
+    glBindVertexArray(gvaoPlanet);
 
     // Create and bind a VBO for vertices
-    GLuint vbo;
-    glGenBuffers(1, &vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glGenBuffers(1, &gvboPlanet);
+    glBindBuffer(GL_ARRAY_BUFFER, gvboPlanet);
     glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(glm::vec3), vertices.data(), GL_STATIC_DRAW);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
     glEnableVertexAttribArray(0);
 
     // Create and bind a VBO for normals
-    GLuint nbo;
-    glGenBuffers(1, &nbo);
-    glBindBuffer(GL_ARRAY_BUFFER, nbo);
+    glGenBuffers(1, &gnboPlanet);
+    glBindBuffer(GL_ARRAY_BUFFER, gnboPlanet);
     glBufferData(GL_ARRAY_BUFFER, normals.size() * sizeof(glm::vec3), normals.data(), GL_STATIC_DRAW);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
     glEnableVertexAttribArray(1);
 
     // Create and bind an EBO for indices
-    GLuint ebo;
-    glGenBuffers(1, &ebo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+    glGenBuffers(1, &geboPlanet);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, geboPlanet);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
+}
 
+void drawSolidSphere(glm::mat4 model)
+{
+    glm::mat4 MVP = gProjection * gView * model;
     // Draw the sphere
-    glBindVertexArray(vao);
-    glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
+    glBindVertexArray(gvaoPlanet);
 
+    GLint elementArrayBufferID;
+    glGetVertexArrayiv(gvaoPlanet, GL_ELEMENT_ARRAY_BUFFER_BINDING, &elementArrayBufferID);
+    GLint elementArrayBufferSize = 0;
+
+    if (elementArrayBufferID != 0) {
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, elementArrayBufferID);
+        glGetBufferParameteriv(GL_ELEMENT_ARRAY_BUFFER, GL_BUFFER_SIZE, &elementArrayBufferSize);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    }
+
+    GLint bufferSizeBytes;
+    glGetBufferParameteriv(GL_ELEMENT_ARRAY_BUFFER, GL_BUFFER_SIZE, &bufferSizeBytes);
+
+    glDrawElements(GL_TRIANGLES, elementArrayBufferSize / sizeof(unsigned int), GL_UNSIGNED_INT, 0);
+
+    glBindVertexArray(0);
+
+
+}
+
+void cleanupSolidSphere()
+{
     // Clean up
-    glDeleteVertexArrays(1, &vao);
-    glDeleteBuffers(1, &vbo);
-    glDeleteBuffers(1, &nbo);
-    glDeleteBuffers(1, &ebo);
+    glDeleteVertexArrays(1, &gvaoPlanet);
+    glDeleteBuffers(1, &gvboPlanet);
+    glDeleteBuffers(1, &gnboPlanet);
+    glDeleteBuffers(1, &geboPlanet);
 }
 
 // Function to draw the Sun with a burning effect
@@ -519,7 +542,7 @@ void drawPlanet(float radius, float distance, const std::vector<float>& color, f
 
 
     //glColor3fv(color.data()); // Set planet color
-    drawSolidSphere(radius, 20, 20); // Draw the planet
+    //drawSolidSphere(radius, 20, 20); // Draw the planet
 
     // Draw Saturn's rings if it's Saturn
     if (name == "Saturn") {
