@@ -32,6 +32,9 @@ Copyright (c) 2025 Artem Moroz
 #    define  M_PI  3.14159265358979323846
 #endif
 
+glm::mat4 gProjection;
+glm::mat4 gView;
+
 // Global variables for rotation angles
 std::vector<float> planetRotations = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // Rotations for each planet
 std::vector<float> planetOrbits = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};    // Orbits for each planet
@@ -82,6 +85,7 @@ std::vector<std::vector<Moon>> planetMoons = {
 };
 
 // Shader program IDs
+GLuint gPlanetShaderProgram;
 GLuint sunShaderProgram;
 GLuint saturnShaderProgram;
 GLuint asteroidShaderProgram;
@@ -101,21 +105,34 @@ glm::mat4 createViewMatrix(glm::vec3 eye, glm::vec3 center, glm::vec3 up) {
 }
 
 
-// OpenGL error callback function
-void GLAPIENTRY openglErrorCallback(
-    GLenum source,
-    GLenum type,
-    GLuint id,
-    GLenum severity,
-    GLsizei length,
-    const GLchar* message,
-    const void* userParam) {
-    std::cerr << "OpenGL Error:" << std::endl;
-    std::cerr << "  Source: " << source << std::endl;
-    std::cerr << "  Type: " << type << std::endl;
-    std::cerr << "  ID: " << id << std::endl;
-    std::cerr << "  Severity: " << severity << std::endl;
-    std::cerr << "  Message: " << message << std::endl;
+void openglDebugCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam) {
+    (void)source;
+    (void)id;
+    (void)length;
+    (void)userParam;
+
+    const char* severityStr = "Unknown";
+    switch (severity) {
+    case GL_DEBUG_SEVERITY_HIGH: severityStr = "High"; break;
+    case GL_DEBUG_SEVERITY_MEDIUM: severityStr = "Medium"; break;
+    case GL_DEBUG_SEVERITY_LOW: severityStr = "Low"; break;
+    case GL_DEBUG_SEVERITY_NOTIFICATION: severityStr = "Notification"; break;
+    }
+
+    const char* typeStr = "Unknown";
+    switch (type) {
+    case GL_DEBUG_TYPE_ERROR: typeStr = "Error"; break;
+    case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR: typeStr = "Deprecated Behavior"; break;
+    case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR: typeStr = "Undefined Behavior"; break;
+    case GL_DEBUG_TYPE_PORTABILITY: typeStr = "Portability"; break;
+    case GL_DEBUG_TYPE_PERFORMANCE: typeStr = "Performance"; break;
+    case GL_DEBUG_TYPE_MARKER: typeStr = "Marker"; break;
+    case GL_DEBUG_TYPE_PUSH_GROUP: typeStr = "Push Group"; break;
+    case GL_DEBUG_TYPE_POP_GROUP: typeStr = "Pop Group"; break;
+    case GL_DEBUG_TYPE_OTHER: typeStr = "Other"; break;
+    }
+
+    fprintf(stderr, "OpenGL Debug Message: Severity = %s, Type = %s\nMessage: %s\n", severityStr, typeStr, message);
 }
 
 // Function to load and compile a shader
@@ -201,6 +218,18 @@ void init() {
     if (glewInit() != GLEW_OK) {
         printf("Failed to initialize GLEW\n");
         exit(1);
+    }
+
+    // Enable debug output
+    if (GLEW_KHR_debug) {
+        glEnable(GL_DEBUG_OUTPUT);
+        glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+        glDebugMessageCallback(openglDebugCallback, NULL);
+        glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, NULL, GL_TRUE);
+        printf("OpenGL debug output enabled.\n");
+    }
+    else {
+        fprintf(stderr, "GL_KHR_debug extension not supported!\n");
     }
     
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // Set background color to black
@@ -315,56 +344,82 @@ void init() {
 }
 
 void drawSolidSphere(float radius, int slices, int stacks) {
-    std::vector<float> vertices;
-    std::vector<float> normals;
-    std::vector<float> texCoords;
+    // Generate vertices, normals, and indices for the sphere
+    std::vector<glm::vec3> vertices;
+    std::vector<glm::vec3> normals;
+    std::vector<unsigned int> indices;
 
+    // Generate vertices and normals
     for (int i = 0; i <= stacks; ++i) {
-        float phi = static_cast<float>(i) / static_cast<float>(stacks) * M_PI;
+        float phi = glm::pi<float>() * static_cast<float>(i) / static_cast<float>(stacks); // Latitude
         for (int j = 0; j <= slices; ++j) {
-            float theta = static_cast<float>(j) / static_cast<float>(slices) * 2.0f * M_PI;
+            float theta = 2.0f * glm::pi<float>() * static_cast<float>(j) / static_cast<float>(slices); // Longitude
 
-            float x = cos(theta) * sin(phi);
-            float y = cos(phi);
-            float z = sin(theta) * sin(phi);
+            // Vertex position
+            float x = radius * sin(phi) * cos(theta);
+            float y = radius * cos(phi);
+            float z = radius * sin(phi) * sin(theta);
 
-            float u = static_cast<float>(j) / static_cast<float>(slices);
-            float v = static_cast<float>(i) / static_cast<float>(stacks);
+            // Normal (same as vertex position normalized)
+            glm::vec3 normal = glm::normalize(glm::vec3(x, y, z));
 
-            vertices.push_back(radius * x);
-            vertices.push_back(radius * y);
-            vertices.push_back(radius * z);
-
-            normals.push_back(x);
-            normals.push_back(y);
-            normals.push_back(z);
-
-            texCoords.push_back(u);
-            texCoords.push_back(v);
+            vertices.push_back(glm::vec3(x, y, z));
+            normals.push_back(normal);
         }
     }
 
-    glEnableClientState(GL_VERTEX_ARRAY);
-    glEnableClientState(GL_NORMAL_ARRAY);
-    glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-
-    glVertexPointer(3, GL_FLOAT, 0, vertices.data());
-    glNormalPointer(GL_FLOAT, 0, normals.data());
-    glTexCoordPointer(2, GL_FLOAT, 0, texCoords.data());
-
+    // Generate indices
     for (int i = 0; i < stacks; ++i) {
-        glBegin(GL_TRIANGLE_STRIP);
-        for (int j = 0; j <= slices; ++j) {
-            int index = i * (slices + 1) + j;
-            glArrayElement(index);
-            glArrayElement(index + slices + 1);
+        for (int j = 0; j < slices; ++j) {
+            int first = (i * (slices + 1)) + j;
+            int second = first + slices + 1;
+
+            indices.push_back(first);
+            indices.push_back(second);
+            indices.push_back(first + 1);
+
+            indices.push_back(second);
+            indices.push_back(second + 1);
+            indices.push_back(first + 1);
         }
-        glEnd();
     }
 
-    glDisableClientState(GL_VERTEX_ARRAY);
-    glDisableClientState(GL_NORMAL_ARRAY);
-    glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+    // Create and bind a VAO
+    GLuint vao;
+    glGenVertexArrays(1, &vao);
+    glBindVertexArray(vao);
+
+    // Create and bind a VBO for vertices
+    GLuint vbo;
+    glGenBuffers(1, &vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(glm::vec3), vertices.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    glEnableVertexAttribArray(0);
+
+    // Create and bind a VBO for normals
+    GLuint nbo;
+    glGenBuffers(1, &nbo);
+    glBindBuffer(GL_ARRAY_BUFFER, nbo);
+    glBufferData(GL_ARRAY_BUFFER, normals.size() * sizeof(glm::vec3), normals.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    glEnableVertexAttribArray(1);
+
+    // Create and bind an EBO for indices
+    GLuint ebo;
+    glGenBuffers(1, &ebo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
+
+    // Draw the sphere
+    glBindVertexArray(vao);
+    glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
+
+    // Clean up
+    glDeleteVertexArrays(1, &vao);
+    glDeleteBuffers(1, &vbo);
+    glDeleteBuffers(1, &nbo);
+    glDeleteBuffers(1, &ebo);
 }
 
 // Function to draw the Sun with a burning effect
@@ -378,15 +433,7 @@ void drawSun() {
 
     // Calculate MVP matrix for the Sun using GLM
     glm::mat4 model = glm::mat4(1.0f); // Identity matrix
-    // Get the View matrix
-    glm::mat4 view;
-    glGetFloatv(GL_MODELVIEW_MATRIX, &view[0][0]);
-
-    // Get the Projection matrix
-    glm::mat4 projection;
-    glGetFloatv(GL_PROJECTION_MATRIX, &projection[0][0]);
-
-    glm::mat4 MVP = projection * view * model;
+    glm::mat4 MVP = gProjection * gView * model;
 
     // Pass MVP matrix to the shader
     GLint mvpLocation = glGetUniformLocation(sunShaderProgram, "MVP");
@@ -403,17 +450,7 @@ void drawSaturnRings(float radius) {
 
     // Calculate MVP matrix for Saturn's rings using GLM
     glm::mat4 model = glm::mat4(1.0f); // Identity matrix
-
-    // Get the View matrix
-    glm::mat4 view;
-    glGetFloatv(GL_MODELVIEW_MATRIX, &view[0][0]);
-
-    // Get the Projection matrix
-    glm::mat4 projection;
-    glGetFloatv(GL_PROJECTION_MATRIX, &projection[0][0]);
-
-    // Calculate the Model-View-Projection matrix
-    glm::mat4 MVP = projection * view * model;
+    glm::mat4 MVP = gProjection * gView * model;
 
     // Pass MVP matrix to the shader
     GLint mvpLocation = glGetUniformLocation(saturnShaderProgram, "MVP");
@@ -433,8 +470,8 @@ void drawSaturnRings(float radius) {
 void drawMoon(float distance, float size, float orbitAngle, float planetAngle, float speed, const std::string& name) {
     glPushMatrix();
     
-    glm::mat4 mvorig, mvorbit, mvplanet, mvtext;
-    glGetFloatv(GL_MODELVIEW_MATRIX, &mvorig[0][0]);
+    glm::mat4 mvorig = gView, mvorbit, mvplanet, mvtext;
+    
 
     mvorbit = mvorig;
     // Calculate the Model-View-Projection matrix
@@ -465,10 +502,9 @@ void drawMoon(float distance, float size, float orbitAngle, float planetAngle, f
 
 // Function to draw a planet and its moons
 void drawPlanet(float radius, float distance, const std::vector<float>& color, float orbitAngle, float rotationAngle, const std::string& name, const std::vector<Moon>& moons) {
-    glPushMatrix();
     // Get the View matrix
-    glm::mat4 mvorig, mvorbit, mvplanet, mvtext;
-    glGetFloatv(GL_MODELVIEW_MATRIX, &mvorig[0][0]);
+    glm::mat4 mvorig = gView, mvorbit, mvplanet, mvtext;
+
 
     mvorbit = mvorig;
     // Calculate the Model-View-Projection matrix
@@ -481,29 +517,27 @@ void drawPlanet(float radius, float distance, const std::vector<float>& color, f
     // Rotate the text
     mvtext = glm::rotate(mvorbit, glm::radians(360.0f - orbitAngle), glm::vec3(0.0f, 1.0f, 0.0f));
 
-    //load modelview matrix
-    glLoadMatrixf(glm::value_ptr(mvplanet));
 
-    glColor3fv(color.data()); // Set planet color
+    //glColor3fv(color.data()); // Set planet color
     drawSolidSphere(radius, 20, 20); // Draw the planet
 
     // Draw Saturn's rings if it's Saturn
     if (name == "Saturn") {
-        drawSaturnRings(radius * 1.5); // Draw rings around Saturn
+        //drawSaturnRings(radius * 1.5); // Draw rings around Saturn
     }
 
     // Draw moons
     for (const Moon& moon : moons) {
-        drawMoon(moon.distance, moon.size, moon.orbit, rotationAngle + orbitAngle, moon.speed, moon.name);
+        //drawMoon(moon.distance, moon.size, moon.orbit, rotationAngle + orbitAngle, moon.speed, moon.name);
     }
 
-    glLoadMatrixf(glm::value_ptr(mvtext));
+    //glLoadMatrixf(glm::value_ptr(mvtext));
    
     // Render the planet's name
-    glColor3f(1.0, 1.0, 1.0); // White color for text
-    renderText(name.c_str(), 1, 0.0f, radius + 1.0f, 0.0f); // Display name above the planet
+    //glColor3f(1.0, 1.0, 1.0); // White color for text
+    //renderText(name.c_str(), 1, 0.0f, radius + 1.0f, 0.0f); // Display name above the planet
 
-    glPopMatrix();
+    //glPopMatrix();
 }
 
 // Function to draw the asteroid belt
@@ -548,23 +582,21 @@ void display() {
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clear color and depth buffers
     
-    glLoadIdentity(); // Reset the model-view matrix
-
     // Create the view matrix using glm::lookAt
-    glm::mat4 viewMatrix = glm::lookAt(
+    gView = glm::lookAt(
         glm::vec3(0.0f, 30.0f, 50.0f), 
         glm::vec3(0.0f, 0.0f, 0.0f), 
         glm::vec3(0.0f, 1.0f, 0.0f));
 
-    glLoadMatrixf(glm::value_ptr(viewMatrix));
    
     // Draw the Sun at the center
     drawSun();
     
+    
     // Draw planet orbits
-    glColor3f(0.5f, 0.5f, 0.5f); // Gray color for orbits
+    //glColor3f(0.5f, 0.5f, 0.5f); // Gray color for orbits
     for (int i = 0; i < 9; i++) {
-        drawCircle(planetDistances[i], 100); // Draw orbit for each planet
+        //drawCircle(planetDistances[i], 100); // Draw orbit for each planet
     }
 
     // Draw all 9 planets with their names and moons
@@ -573,8 +605,8 @@ void display() {
     }
 
     // Draw the asteroid belt
-    drawAsteroidBelt();
-
+    //drawAsteroidBelt();
+    
     
 }
 
@@ -603,10 +635,13 @@ void update() {
 // Function to handle window resizing
 void reshape(int w, int h) {
     glViewport(0, 0, w, h); // Set the viewport to cover the new window
-    glMatrixMode(GL_PROJECTION); // Switch to the projection matrix
-    glLoadIdentity(); // Reset the projection matrix
-    gluPerspective(30.0, (double)w / (double)h, 1.0, 200.0); // Adjust FOV to 30 degrees
-    glMatrixMode(GL_MODELVIEW); // Switch back to the model-view matrix
+    // Create a perspective projection matrix using GLM
+    gProjection = glm::perspective(
+        glm::radians(30.0f), // Field of View (FOV) in radians (30 degrees)
+        (float)w / (float)h, // Aspect ratio
+        1.0f,               // Near clipping plane
+        200.0f              // Far clipping plane
+    );
 }
 
 
@@ -677,7 +712,7 @@ int main(int argc, char** argv)
         // Set OpenGL attributes before window creation
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY); // Use Core profile
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE); // Use Core profile
         SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1); // Enable double buffering
 
         //Create window
