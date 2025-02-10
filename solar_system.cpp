@@ -85,7 +85,7 @@ std::vector<std::vector<Moon>> planetMoons = {
 };
 
 // Shader program IDs
-GLuint gPlanetShaderProgram;
+GLuint planetShaderProgram;
 GLuint sunShaderProgram;
 GLuint saturnShaderProgram;
 GLuint asteroidShaderProgram;
@@ -101,6 +101,9 @@ float asteroidBeltRotation = 0.0f; // Rotation angle for the asteroid belt
 SDL_Window* g_Window = NULL;
 SDL_GLContext g_glContext = NULL;
 bool g_bQuit = false;
+
+void prepareSolidSphere(float radius, int slices, int stacks);
+void cleanup();
 
 glm::mat4 createViewMatrix(glm::vec3 eye, glm::vec3 center, glm::vec3 up) {
     return glm::lookAt(eye, center, up);
@@ -237,6 +240,26 @@ void init() {
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // Set background color to black
     glEnable(GL_DEPTH_TEST);          // Enable depth testing for 3D rendering
 
+
+    const char* planetVertexShaderSource =
+        "#version 330 core\n"
+        "layout(location = 0) in vec3 aPos;\n"
+        "uniform mat4 MVP;\n" // Model-View-Projection matrix
+        "void main() {\n"
+        "    gl_Position = MVP * vec4(aPos, 1.0);\n" // Transform vertex position
+        "}\n";
+
+    const char* planetFragmentShaderSource =
+        "#version 330 core\n"
+        "out vec4 FragColor;\n"
+        "uniform vec3 uColor;\n" // Color
+        "void main() {\n"
+        "    FragColor = vec4(uColor, 1.0);\n" 
+        "}\n";
+
+    planetShaderProgram = createShaderProgram(planetVertexShaderSource, planetFragmentShaderSource);
+
+
     // Vertex and fragment shaders for the Sun (burning effect)
     const char* sunVertexShaderSource =
         "#version 330 core\n"
@@ -342,8 +365,12 @@ void init() {
     glBindVertexArray(0); // Unbind VAO
     glBindBuffer(GL_ARRAY_BUFFER, 0); // Unbind buffers
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+
+    prepareSolidSphere(0.5f, 50, 50);
     
 }
+
 
 void prepareSolidSphere(float radius, int slices, int stacks) {
     // Generate vertices, normals, and indices for the sphere
@@ -408,32 +435,30 @@ void prepareSolidSphere(float radius, int slices, int stacks) {
     glGenBuffers(1, &geboPlanet);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, geboPlanet);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
+
+    glBindVertexArray(0); // Unbind VAO
+    glBindBuffer(GL_ARRAY_BUFFER, 0); // Unbind buffers
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 }
 
-void drawSolidSphere(glm::mat4 model)
+void drawSolidSphere()
 {
-    glm::mat4 MVP = gProjection * gView * model;
     // Draw the sphere
     glBindVertexArray(gvaoPlanet);
 
     GLint elementArrayBufferID;
-    glGetVertexArrayiv(gvaoPlanet, GL_ELEMENT_ARRAY_BUFFER_BINDING, &elementArrayBufferID);
     GLint elementArrayBufferSize = 0;
+
+    glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &elementArrayBufferID);
 
     if (elementArrayBufferID != 0) {
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, elementArrayBufferID);
         glGetBufferParameteriv(GL_ELEMENT_ARRAY_BUFFER, GL_BUFFER_SIZE, &elementArrayBufferSize);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     }
-
-    GLint bufferSizeBytes;
-    glGetBufferParameteriv(GL_ELEMENT_ARRAY_BUFFER, GL_BUFFER_SIZE, &bufferSizeBytes);
-
     glDrawElements(GL_TRIANGLES, elementArrayBufferSize / sizeof(unsigned int), GL_UNSIGNED_INT, 0);
 
     glBindVertexArray(0);
-
-
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 }
 
 void cleanupSolidSphere()
@@ -449,11 +474,6 @@ void cleanupSolidSphere()
 void drawSun() {
     glUseProgram(sunShaderProgram);
 
-    // Pass time uniform to the shader
-    float time = SDL_GetTicks() / 1000.0f; // Get time in seconds
-    GLint timeLocation = glGetUniformLocation(sunShaderProgram, "time");
-    glUniform1f(timeLocation, time);
-
     // Calculate MVP matrix for the Sun using GLM
     glm::mat4 model = glm::mat4(1.0f); // Identity matrix
     glm::mat4 MVP = gProjection * gView * model;
@@ -462,7 +482,13 @@ void drawSun() {
     GLint mvpLocation = glGetUniformLocation(sunShaderProgram, "MVP");
     glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, glm::value_ptr(MVP));
 
-    drawSolidSphere(0.5, 50, 50); // Draw the Sun with a smaller radius (0.5)
+    // Pass time uniform to the shader
+    float time = SDL_GetTicks() / 1000.0f; // Get time in seconds
+    GLint timeLocation = glGetUniformLocation(sunShaderProgram, "time");
+    glUniform1f(timeLocation, time);
+
+    drawSolidSphere();      // Draw the Sun
+
 
     glUseProgram(0); // Switch back to fixed-function pipeline
 }
@@ -490,59 +516,71 @@ void drawSaturnRings(float radius) {
 }
 
 // Function to draw a moon
-void drawMoon(float distance, float size, float orbitAngle, float planetAngle, float speed, const std::string& name) {
-    glPushMatrix();
-    
-    glm::mat4 mvorig = gView, mvorbit, mvplanet, mvtext;
-    
+void drawMoon(glm::mat4 mvorig, float distance, float size, float orbitAngle, float planetAngle, float speed, const std::string& name) {
+        
+    glm::mat4 mvorbit, mvmoonscaled, mvtext;
 
     mvorbit = mvorig;
-    // Calculate the Model-View-Projection matrix
-    
     // Move to the moon's orbit
     mvorbit = glm::rotate(mvorbit, glm::radians(orbitAngle), glm::vec3(0.0f, 1.0f, 0.0f));
     
     // Rotate the moon on its axis
     mvorbit = glm::translate(mvorbit, glm::vec3(distance, 0.0f, 0.0f));
+    
+    mvmoonscaled = glm::scale(mvorbit, glm::vec3(size / 0.5f));
 
     mvtext = glm::rotate(mvorbit, glm::radians(360.0f - planetAngle - orbitAngle), glm::vec3(0.0f, 1.0f, 0.0f));
 
-    glLoadMatrixf(glm::value_ptr(mvorbit));
+    glUseProgram(planetShaderProgram);
+    // Pass MVP matrix to the shader
+    GLint mvpLocation = glGetUniformLocation(planetShaderProgram, "MVP");
+    glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, glm::value_ptr(mvmoonscaled));
 
-    //glRotatef(orbitAngle, 0.0, 1.0, 0.0); // Rotate around the planet
-    //glTranslatef(distance, 0.0, 0.0);     // Move to the moon's orbit
-    glColor3f(0.8f, 0.8f, 0.8f); // Gray color for moons
-    drawSolidSphere(size, 20, 20); // Draw the moon
+    GLint colorLocation = glGetUniformLocation(planetShaderProgram, "uColor");
+    glm::vec3 color = glm::vec3(0.8f, 0.8f, 0.8f);
+    glUniform3fv(colorLocation, 1, glm::value_ptr(color));
 
-    glLoadMatrixf(glm::value_ptr(mvtext));
+    drawSolidSphere();
+
+    glUseProgram(0);
+    
 
     // Render the moon's name
-    glColor3f(1.0f, 1.0f, 1.0f); // White color for text
-    renderText(name.c_str(), 0, 0.0f, - (size + 0.5f), 0.0f); // Display name above the moon
+    //glColor3f(1.0f, 1.0f, 1.0f); // White color for text
+    //renderText(name.c_str(), 0, 0.0f, - (size + 0.5f), 0.0f); // Display name above the moon
 
-    glPopMatrix();
+    
 }
 
 // Function to draw a planet and its moons
 void drawPlanet(float radius, float distance, const std::vector<float>& color, float orbitAngle, float rotationAngle, const std::string& name, const std::vector<Moon>& moons) {
-    // Get the View matrix
-    glm::mat4 mvorig = gView, mvorbit, mvplanet, mvtext;
-
+    glm::mat4 mvorig = gProjection * gView, mvorbit, mvplanet, mvplanetscaled, mvtext;
 
     mvorbit = mvorig;
-    // Calculate the Model-View-Projection matrix
     // Rotate around the Sun
     mvorbit = glm::rotate(mvorbit, glm::radians(orbitAngle), glm::vec3(0.0f, 1.0f, 0.0f));
     // Move to the planet's orbit
     mvorbit = glm::translate(mvorbit, glm::vec3(distance, 0.0f, 0.0f));
     // Rotate the planet on its axis
     mvplanet = glm::rotate(mvorbit, glm::radians(rotationAngle), glm::vec3(0.0f, 1.0f, 0.0f));
+   
+    mvplanetscaled = glm::scale(mvplanet, glm::vec3(radius / 0.5f));
+
     // Rotate the text
     mvtext = glm::rotate(mvorbit, glm::radians(360.0f - orbitAngle), glm::vec3(0.0f, 1.0f, 0.0f));
 
 
-    //glColor3fv(color.data()); // Set planet color
-    //drawSolidSphere(radius, 20, 20); // Draw the planet
+    glUseProgram(planetShaderProgram);
+    // Pass MVP matrix to the shader
+    GLint mvpLocation = glGetUniformLocation(planetShaderProgram, "MVP");
+    glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, glm::value_ptr(mvplanetscaled));
+
+    GLint colorLocation = glGetUniformLocation(planetShaderProgram, "uColor");
+    glUniform3fv(colorLocation, 1, color.data());
+
+    drawSolidSphere();
+
+    glUseProgram(0);
 
     // Draw Saturn's rings if it's Saturn
     if (name == "Saturn") {
@@ -551,7 +589,7 @@ void drawPlanet(float radius, float distance, const std::vector<float>& color, f
 
     // Draw moons
     for (const Moon& moon : moons) {
-        //drawMoon(moon.distance, moon.size, moon.orbit, rotationAngle + orbitAngle, moon.speed, moon.name);
+        drawMoon(mvplanet, moon.distance, moon.size, moon.orbit, rotationAngle + orbitAngle, moon.speed, moon.name);
     }
 
     //glLoadMatrixf(glm::value_ptr(mvtext));
@@ -619,7 +657,7 @@ void display() {
     // Draw planet orbits
     //glColor3f(0.5f, 0.5f, 0.5f); // Gray color for orbits
     for (int i = 0; i < 9; i++) {
-        //drawCircle(planetDistances[i], 100); // Draw orbit for each planet
+        drawCircle(planetDistances[i], 100); // Draw orbit for each planet
     }
 
     // Draw all 9 planets with their names and moons
@@ -751,6 +789,9 @@ int main(int argc, char** argv)
                 {
                     mainloop();
                 }
+
+                cleanup();
+
                
                 SDL_GL_DeleteContext(g_glContext);
             }
@@ -762,3 +803,9 @@ int main(int argc, char** argv)
     }
     return 0;
 }
+
+void cleanup()
+{
+    cleanupSolidSphere();
+}
+
