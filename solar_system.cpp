@@ -106,6 +106,7 @@ bool g_bQuit = false;
 
 void prepareSolidSphere(float radius, int slices, int stacks);
 void prepareCircle(float radius, int segments);
+void drawCircle();
 void cleanup();
 
 glm::mat4 createViewMatrix(glm::vec3 eye, glm::vec3 center, glm::vec3 up) {
@@ -361,7 +362,7 @@ void init() {
     glBufferData(GL_ARRAY_BUFFER, asteroidPositions.size() * sizeof(glm::vec3), asteroidPositions.data(), GL_STATIC_DRAW);
 
     //// Set up vertex attribute pointers
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
     glEnableVertexAttribArray(0);
 
     //// Generate indices for asteroids (each asteroid is a point)
@@ -524,7 +525,7 @@ void cleanupCircle()
     glDeleteBuffers(1, &gvboOrbit);
 }
 
-void drawCircle(float radius)
+void drawOrbit(float radius)
 {
     glUseProgram(orbitShaderProgram);
 
@@ -532,9 +533,16 @@ void drawCircle(float radius)
     mvorbit = glm::scale(mvorbit, glm::vec3(radius, 0.0f, radius));
 
     // Pass MVP matrix to the shader
-    GLint mvpLocation = glGetUniformLocation(planetShaderProgram, "MVP");
+    GLint mvpLocation = glGetUniformLocation(orbitShaderProgram, "MVP");
     glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, glm::value_ptr(mvorbit));
 
+    drawCircle();
+
+    glUseProgram(0);
+}
+
+void drawCircle()
+{
     glBindVertexArray(gvaoOrbit);
 
     GLint arrayBufferID = 0;
@@ -550,11 +558,8 @@ void drawCircle(float radius)
     // Draw the circle
     glDrawArrays(GL_LINE_LOOP, 0, arrayBufferSize / (3 * sizeof(float)));
 
-
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-    glUseProgram(0);
 }
 
 // Function to draw the Sun with a burning effect
@@ -581,23 +586,16 @@ void drawSun() {
 }
 
 // Function to draw Saturn's rings
-void drawSaturnRings(float radius) {
+void drawSaturnRings(glm::mat4 mvplanet, float radius) {
     glUseProgram(saturnShaderProgram);
 
-    // Calculate MVP matrix for Saturn's rings using GLM
-    glm::mat4 model = glm::mat4(1.0f); // Identity matrix
-    glm::mat4 MVP = gProjection * gView * model;
+    glm::mat4 mvrings = glm::scale(mvplanet, glm::vec3(radius, 0.0f, radius));
 
     // Pass MVP matrix to the shader
     GLint mvpLocation = glGetUniformLocation(saturnShaderProgram, "MVP");
-    glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, glm::value_ptr(MVP));
+    glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, glm::value_ptr(mvrings));
 
-    glBegin(GL_LINE_LOOP);
-    for (int i = 0; i < 100; i++) {
-        float angle = 2.0f * M_PI * i / 100;
-        glVertex3f(radius * cos(angle), 0.0f, radius * sin(angle));
-    }
-    glEnd();
+    drawCircle();
 
     glUseProgram(0); // Switch back to fixed-function pipeline
 }
@@ -671,7 +669,7 @@ void drawPlanet(float radius, float distance, const std::vector<float>& color, f
 
     // Draw Saturn's rings if it's Saturn
     if (name == "Saturn") {
-        //drawSaturnRings(radius * 1.5); // Draw rings around Saturn
+        drawSaturnRings(mvplanet, radius * 1.5); // Draw rings around Saturn
     }
 
     // Draw moons
@@ -690,19 +688,12 @@ void drawPlanet(float radius, float distance, const std::vector<float>& color, f
 
 // Function to draw the asteroid belt
 void drawAsteroidBelt() {
+
+    
+
     glUseProgram(asteroidShaderProgram);
 
-    // Calculate MVP matrix for the asteroid belt using GLM
-    glm::mat4 model = glm::mat4(1.0f); // Identity matrix
-    // Get the View matrix
-    glm::mat4 view;
-    glGetFloatv(GL_MODELVIEW_MATRIX, &view[0][0]);
-
-    // Get the Projection matrix
-    glm::mat4 projection;
-    glGetFloatv(GL_PROJECTION_MATRIX, &projection[0][0]);
-
-    glm::mat4 MVP = projection * view * model;
+    glm::mat4 MVP = gProjection * gView;
 
     // Pass MVP matrix to the shader
     GLint mvpLocation = glGetUniformLocation(asteroidShaderProgram, "MVP");
@@ -719,8 +710,21 @@ void drawAsteroidBelt() {
 
     // Draw asteroids
     glBindVertexArray(asteroidVAO);
-    glDrawElements(GL_POINTS, numAsteroids, GL_UNSIGNED_INT, 0);
+   
+    GLint elementArrayBufferID;
+    GLint elementArrayBufferSize = 0;
+
+    glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &elementArrayBufferID);
+
+    if (elementArrayBufferID != 0) {
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, elementArrayBufferID);
+        glGetBufferParameteriv(GL_ELEMENT_ARRAY_BUFFER, GL_BUFFER_SIZE, &elementArrayBufferSize);
+    }
+
+    glDrawElements(GL_POINTS, elementArrayBufferSize / sizeof(GLuint), GL_UNSIGNED_INT, 0);
+
     glBindVertexArray(0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
     glUseProgram(0); // Switch back to fixed-function pipeline
 }
@@ -744,7 +748,7 @@ void display() {
     // Draw planet orbits
     //glColor3f(0.5f, 0.5f, 0.5f); // Gray color for orbits
     for (int i = 0; i < 9; i++) {
-        drawCircle(planetDistances[i]); // Draw orbit for each planet
+        drawOrbit(planetDistances[i]); // Draw orbit for each planet
     }
 
     // Draw all 9 planets with their names and moons
@@ -753,7 +757,7 @@ void display() {
     }
 
     // Draw the asteroid belt
-    //drawAsteroidBelt();
+    drawAsteroidBelt();
     
     
 }
