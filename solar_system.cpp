@@ -86,6 +86,7 @@ std::vector<std::vector<Moon>> planetMoons = {
 
 // Shader program IDs
 GLuint planetShaderProgram;
+GLuint orbitShaderProgram;
 GLuint sunShaderProgram;
 GLuint saturnShaderProgram;
 GLuint asteroidShaderProgram;
@@ -94,6 +95,7 @@ GLuint asteroidShaderProgram;
 std::vector<glm::vec3> asteroidPositions; // Positions of asteroids
 GLuint asteroidVAO, asteroidVBO, asteroidIBO; // Vertex Array Object, Vertex Buffer Object, Index Buffer Object
 GLuint gvaoPlanet, gvboPlanet, gnboPlanet, geboPlanet;
+GLuint gvaoOrbit, gvboOrbit;
 
 GLuint numAsteroids = 1000; // Number of asteroids
 float asteroidBeltRotation = 0.0f; // Rotation angle for the asteroid belt
@@ -103,6 +105,7 @@ SDL_GLContext g_glContext = NULL;
 bool g_bQuit = false;
 
 void prepareSolidSphere(float radius, int slices, int stacks);
+void prepareCircle(float radius, int segments);
 void cleanup();
 
 glm::mat4 createViewMatrix(glm::vec3 eye, glm::vec3 center, glm::vec3 up) {
@@ -206,16 +209,6 @@ void renderText(const char* text, int bigger, float x, float y, float z) {
     glDisableClientState(GL_VERTEX_ARRAY);
 }
 
-// Function to draw a circle (for planet orbits)
-void drawCircle(float radius, int segments) {
-    glBegin(GL_LINE_LOOP);
-    for (int i = 0; i < segments; i++) {
-        float angle = 2.0f * M_PI * i / segments;
-        glVertex3f(radius * cos(angle), 0.0f, radius * sin(angle));
-    }
-    glEnd();
-}
-
 // Function to initialize OpenGL settings and shaders
 void init() {
     // Initialize GLEW
@@ -258,6 +251,25 @@ void init() {
         "}\n";
 
     planetShaderProgram = createShaderProgram(planetVertexShaderSource, planetFragmentShaderSource);
+
+
+    // Vertex and fragment shaders for orbits
+    const char* orbitVertexShaderSource =
+        "#version 330 core\n"
+        "layout(location = 0) in vec3 aPos;\n"
+        "uniform mat4 MVP;\n"
+        "void main() {\n"
+        "    gl_Position = MVP * vec4(aPos, 1.0);\n" // Transform vertex position
+        "}\n";
+
+    const char* orbitFragmentShaderSource =
+        "#version 330 core\n"
+        "out vec4 FragColor;\n"
+        "void main() {\n"
+        "    FragColor = vec4(0.5, 0.5, 0.5, 1.0);\n"
+        "}\n";
+
+    orbitShaderProgram = createShaderProgram(orbitVertexShaderSource, orbitFragmentShaderSource);
 
 
     // Vertex and fragment shaders for the Sun (burning effect)
@@ -368,6 +380,8 @@ void init() {
 
 
     prepareSolidSphere(0.5f, 50, 50);
+
+    prepareCircle(1.0f, 100);
     
 }
 
@@ -468,6 +482,79 @@ void cleanupSolidSphere()
     glDeleteBuffers(1, &gvboPlanet);
     glDeleteBuffers(1, &gnboPlanet);
     glDeleteBuffers(1, &geboPlanet);
+}
+
+void prepareCircle(float radius, int segments)
+{
+    std::vector<float> vertices;
+    vertices.reserve(segments * 3);
+
+    for (int i = 0; i < segments; ++i) {
+        float angle = 2.0f * M_PI * i / segments;
+        vertices.push_back(radius * cos(angle)); // X
+        vertices.push_back(0.0f);                 // Y
+        vertices.push_back(radius * sin(angle));  // Z
+    }
+
+    glGenVertexArrays(1, &gvaoOrbit);
+    glGenBuffers(1, &gvboOrbit);
+
+    glBindVertexArray(gvaoOrbit);
+
+    glBindBuffer(GL_ARRAY_BUFFER, gvboOrbit);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    glEnableVertexAttribArray(0);
+
+
+    /*
+    // Draw the circle
+    glBindVertexArray(VAO);
+    glDrawArrays(GL_LINE_LOOP, 0, segments);
+    glBindVertexArray(0);
+    */
+
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
+void cleanupCircle()
+{
+    glDeleteVertexArrays(1, &gvaoOrbit);
+    glDeleteBuffers(1, &gvboOrbit);
+}
+
+void drawCircle(float radius)
+{
+    glUseProgram(orbitShaderProgram);
+
+    glm::mat4 mvorbit = gProjection * gView;
+    mvorbit = glm::scale(mvorbit, glm::vec3(radius, 0.0f, radius));
+
+    // Pass MVP matrix to the shader
+    GLint mvpLocation = glGetUniformLocation(planetShaderProgram, "MVP");
+    glUniformMatrix4fv(mvpLocation, 1, GL_FALSE, glm::value_ptr(mvorbit));
+
+    glBindVertexArray(gvaoOrbit);
+
+    GLint arrayBufferID = 0;
+    GLint arrayBufferSize = 0;
+
+    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, (GLint*)&arrayBufferID);
+
+    if (arrayBufferID != 0) {
+        glBindBuffer(GL_ARRAY_BUFFER, arrayBufferID);
+        glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_SIZE, &arrayBufferSize);
+    }
+    
+    // Draw the circle
+    glDrawArrays(GL_LINE_LOOP, 0, arrayBufferSize / (3 * sizeof(float)));
+
+
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    glUseProgram(0);
 }
 
 // Function to draw the Sun with a burning effect
@@ -657,7 +744,7 @@ void display() {
     // Draw planet orbits
     //glColor3f(0.5f, 0.5f, 0.5f); // Gray color for orbits
     for (int i = 0; i < 9; i++) {
-        drawCircle(planetDistances[i], 100); // Draw orbit for each planet
+        drawCircle(planetDistances[i]); // Draw orbit for each planet
     }
 
     // Draw all 9 planets with their names and moons
@@ -807,5 +894,6 @@ int main(int argc, char** argv)
 void cleanup()
 {
     cleanupSolidSphere();
+    cleanupCircle();
 }
 
