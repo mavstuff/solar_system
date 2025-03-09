@@ -3,6 +3,8 @@ project(solar_system)
 
 set(CMAKE_CXX_STANDARD 11)
 
+set(BUILD_SHARED_LIBS OFF)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 add_subdirectory(glm EXCLUDE_FROM_ALL)
 add_subdirectory(glew/build/cmake EXCLUDE_FROM_ALL)
@@ -30,4 +32,4 @@ set(SOURCE_FILES solar_system.cpp)
 add_executable(solar_system ${SOURCE_FILES})
 
 # Link libraries
-target_link_libraries(solar_system glew_s SDL2-static ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(solar_system glew_s SDL2-static SDL2_ttf ${CMAKE_THREAD_LIBS_INIT})
