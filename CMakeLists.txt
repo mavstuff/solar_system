@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD 11)
 add_subdirectory(glm EXCLUDE_FROM_ALL)
 add_subdirectory(glew/build/cmake EXCLUDE_FROM_ALL)
 add_subdirectory(SDL EXCLUDE_FROM_ALL)
+add_subdirectory(SDL_ttf EXCLUDE_FROM_ALL)
 
 # Find required libraries
 #find_package(OpenGL REQUIRED)
@@ -16,6 +17,7 @@ include_directories(
     "glm/"
 	"glew/include/"
 	"SDL/include/"
+	"SDL_ttf/"
     .
 )
 
